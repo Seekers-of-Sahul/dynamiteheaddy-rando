@@ -34,7 +34,7 @@ python randomizer/headdy_rando.py "Dynamite Headdy (USA, Europe).md" rando.md --
 | Dynamite Headdy (USA, Europe) | `d11ec9b230e88403cd75ef186a884c97` | everything |
 | Dynamite Headdy (Japan) | `cdb36911439289d3453060f58682057c` | only the JP balance / JP palette options |
 
-AI was consulted when coding the Python scripts, and it created the HTML page as well.
+AI was consulted when coding the Python scripts, and it created the HTML page as well because I couldn't be bothered.
 
 ## License
 
