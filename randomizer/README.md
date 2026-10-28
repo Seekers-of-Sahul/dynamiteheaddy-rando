@@ -104,7 +104,7 @@ In act 7 the camera moves on its own when you reach the boss with a flying head.
 
 Known issues:
 
-- **Garbled shots.** Outside 6-1 the shots look garbled, because their graphics are only loaded in 6-1. They still work.
+- **Stand-in shots.** The real shot graphics are only loaded in act 6, and other stages have no room for them, so outside act 6 the shots are drawn as small stars and fireballs instead. In act 6 they look as usual.
 - **Bino Head.** Feather Head has the game's usual 1-in-8 chance of turning into Bino Head when you pick it up, which gives a Secret Bonus Point.
 
 ### Colours
