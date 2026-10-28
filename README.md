@@ -34,6 +34,8 @@ python randomizer/headdy_rando.py "Dynamite Headdy (USA, Europe).md" rando.md --
 | Dynamite Headdy (USA, Europe) | `d11ec9b230e88403cd75ef186a884c97` | everything |
 | Dynamite Headdy (Japan) | `cdb36911439289d3453060f58682057c` | only the JP balance / JP palette options |
 
+AI was consulted when coding the python scripts, and it created the HTML page as well.
+
 ## License
 
 The code in this repository is under the [MIT license](LICENSE). Dynamite Headdy is © Sega / Treasure; this project isn't affiliated with them.
