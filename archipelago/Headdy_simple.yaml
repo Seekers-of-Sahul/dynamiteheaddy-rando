@@ -1,0 +1,22 @@
+# Dynamite Headdy - simple Archipelago settings.
+# Change the values after the colons. Anything you leave out uses its default.
+
+name: Player                   # your slot name (max 16 characters)
+game: Dynamite Headdy
+
+Dynamite Headdy:
+  goal: secret_boss            # secret_boss / final_boss / bonus_points
+  required_bonus_points: 20    # only used by the bonus_points goal (1-39)
+  starting_stage: act_1_1      # act_1_1 ... act_9_3, act_7, or random
+
+  headcases: safe              # off / safe / chaos
+  head_trip: true              # allow Head Trip (reversed controls) in Headcases
+  flying_heads: false          # Rocket/Air/Feather in normal Headcases
+  shuffle_3_2: false           # also shuffle 3-2's switching Headcase
+  boss_bomb: true              # keep Bomb Head at the act 7 boss
+
+  jp_balance: false            # easier Japanese difficulty
+  jp_palettes: false           # Japanese colours for the 8 changed palettes
+  palettes: safe               # off / safe / hue / chaos
+  palette_sprites: false       # also recolour Headdy and enemies
+  enemy_damage: vanilla        # vanilla / shuffled / half / double
