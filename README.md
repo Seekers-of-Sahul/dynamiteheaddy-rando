@@ -3,7 +3,7 @@
 A randomizer, difficulty mod and [Archipelago](https://archipelago.gg) world for **Dynamite Headdy** (Mega Drive / Genesis, USA/Europe version).
 
 - **Headcase shuffle** with logic, so every stage stays beatable and every Secret Bonus Point reachable.
-- **Flying heads** (Rocket, Air, Feather) usable outside act 6, with A to drop them.
+- **Flying heads** (Rocket, Air, Feather) usable outside act 6 (you can press the A to drop them and they expire in time just like other heads.)
 - **Palette shuffle:** safe, hue or chaos palettes.
 - **Enemy damage:** shuffled, halved or doubled.
 - **JP balance:** the easier Japanese release's continues, bosses, enemy waves and layouts, including the 3-1 Headcase the US version removed.
