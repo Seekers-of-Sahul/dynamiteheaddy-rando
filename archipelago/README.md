@@ -15,7 +15,7 @@ All the randomizer options (Headcases, flying heads, palettes, enemy damage, JP 
 
 ## Installing
 
-1. Get `headdy.apworld` from the [Releases](../../releases) page, or build it yourself (below).
+1. Get `headdy.apworld` from the [Releases](https://github.com/Seekers-of-Sahul/dynamiteheaddy-rando/releases) page, or build it yourself (below).
 2. Put it in the `custom_worlds` folder of your Archipelago install (or double-click it).
 3. Fill in a YAML: `Headdy_simple.yaml` has the common options with comments; `Dynamite Headdy.yaml` has every option.
 
