@@ -12,13 +12,13 @@ A randomizer, difficulty mod and [Archipelago](https://archipelago.gg) world for
 
 **No ROMs are included.** You need your own copy of Dynamite Headdy (USA, Europe). The JP options also need your own Dynamite Headdy (Japan) ROM, because they copy the Japanese code and data from it.
 
-**[Mod your legal ROM on your browser →](https://seekers-of-sahul.github.io/dynamite-headdy-rando/)** Pick your ROM and options, and download the randomized game. Nothing is uploaded.
+**[Mod your legal ROM on your browser →](https://seekers-of-sahul.github.io/dynamiteheaddy-rando/)** Pick your ROM and options, and download the randomized game. Nothing is uploaded.
 
 ## How do I download it?
 
 | I want to… | Go to |
 | --- | --- |
- | Make a randomized ROM to play on its own | the [web page](https://seekers-of-sahul.github.io/dynamite-headdy-rando/), or [`randomizer/`](randomizer/README.md) from the command line |
+ | Make a randomized ROM to play on its own | the [web page](https://seekers-of-sahul.github.io/dynamiteheaddy-rando/), or [`randomizer/`](randomizer/README.md) from the command line |
 | Play it in an Archipelago multiworld | [`archipelago/`](archipelago/README.md) |
 
 The randomizer is one Python file with no dependencies:
