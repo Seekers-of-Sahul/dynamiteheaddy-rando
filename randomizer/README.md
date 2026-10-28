@@ -149,19 +149,6 @@ What `--jp-balance` changes:
 
 ---
 
-## Testing flying heads everywhere
-
-`flying_test.py` makes a test ROM with flying heads in **every** Headcase (except 6-1's), using the same A-to-drop patch:
-
-```
-python flying_test.py headdy.md flytest.md
-python flying_test.py headdy.md flytest.md --head feather
-```
-
-It also writes `flytest.md.headcases.txt`, a checklist of every Headcase, to tick off as you play. Two-head sets only get Rocket and Air, so use `--head feather` to test Feather Head there. Liberty Head is kept so the basketball games still work; add `--no-liberty` to replace it too.
-
----
-
 ## Example setups
 
 A casual randomizer:
