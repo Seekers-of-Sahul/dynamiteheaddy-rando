@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamite Headdy Randomizer</title>
+<meta name="description" content="Randomize Dynamite Headdy (Mega Drive / Genesis) in your browser. Your ROM never leaves your computer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6efe2;
+  --panel: #fffaf1;
+  --ink: #2a1a14;
+  --muted: #6e5a4e;
+  --line: #e2d3bd;
+  --curtain: #a3182b;
+  --curtain-deep: #6d0d1b;
+  --gold: #e9a91b;
+  --gold-ink: #3b2600;
+  --accent: #a3182b;
+  --ok: #2f7d3b;
+  --warn: #9a5a00;
+  --err: #b3261e;
+  --chip: #f1e4cf;
+  --focus: #e9a91b;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17100e;
+    --panel: #221815;
+    --ink: #f4e9da;
+    --muted: #b9a594;
+    --line: #3d2c26;
+    --curtain: #8f1424;
+    --curtain-deep: #4c0712;
+    --gold: #f0b52c;
+    --gold-ink: #2b1b00;
+    --accent: #f0b52c;
+    --ok: #79c487;
+    --warn: #f0b052;
+    --err: #ff8a80;
+    --chip: #2e211c;
+    --focus: #f0b52c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17100e; --panel: #221815; --ink: #f4e9da; --muted: #b9a594; --line: #3d2c26;
+  --curtain: #8f1424; --curtain-deep: #4c0712; --gold: #f0b52c; --gold-ink: #2b1b00;
+  --accent: #f0b52c; --ok: #79c487; --warn: #f0b052; --err: #ff8a80; --chip: #2e211c;
+  --focus: #f0b52c; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 "Nunito", system-ui, sans-serif;
+}
+a { color: var(--accent); }
+header {
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0 2px, transparent 2px 46px),
+    linear-gradient(180deg, var(--curtain), var(--curtain-deep));
+  color: #fff4dc;
+  padding: 36px 16px 44px;
+  text-align: center;
+  position: relative;
+}
+header::after {               /* scalloped valance edge */
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -14px; height: 14px;
+  background: radial-gradient(circle at 23px -9px, var(--curtain-deep) 22px, transparent 23px) 0 0 / 46px 14px repeat-x;
+}
+h1 {
+  font-family: "Bowlby One", "Nunito", sans-serif;
+  font-weight: 400;
+  font-size: clamp(30px, 6vw, 52px);
+  line-height: 1.05;
+  margin: 0;
+  color: var(--gold);
+  text-shadow: 0 3px 0 #5a0a14, 0 6px 14px rgba(0,0,0,.35);
+  letter-spacing: .5px;
+}
+h1 small { display: block; font-size: .45em; color: #fff4dc; text-shadow: 0 2px 0 #5a0a14; margin-top: 6px; }
+header p { margin: 14px auto 0; max-width: 560px; color: #ffe9c4; }
+main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+.panel h2 {
+  font-family: "Bowlby One", "Nunito", sans-serif;
+  font-weight: 400;
+  font-size: 20px;
+  margin: 0 0 4px;
+  letter-spacing: .3px;
+}
+.panel > .hint { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+.step { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--gold); color: var(--gold-ink); font-family: "Bowlby One", sans-serif; font-size: 14px;
+  margin-right: 8px; vertical-align: 2px; }
+
+/* file drop */
+.drop {
+  display: flex; align-items: center; gap: 14px;
+  border: 2px dashed var(--line); border-radius: 12px; padding: 16px;
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop.over { border-color: var(--gold); background: var(--chip); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.drop:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.drop .icon { font-size: 28px; line-height: 1; }
+.drop strong { display: block; }
+.drop .sub { color: var(--muted); font-size: 14px; word-break: break-all; }
+.status { font-size: 14px; margin-top: 8px; min-height: 1.5em; }
+.status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.err { color: var(--err); }
+
+/* presets */
+.presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.presets button {
+  border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+  border-radius: 999px; padding: 6px 14px; font: 600 14px "Nunito", sans-serif; cursor: pointer;
+}
+.presets button:hover { border-color: var(--gold); }
+.presets button[aria-pressed="true"] { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
+
+/* options */
+fieldset { border: 0; padding: 0; margin: 0 0 18px; }
+fieldset:last-child { margin-bottom: 0; }
+legend { font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; padding: 0; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+fieldset .row:first-of-type { border-top: 0; }
+.row label { font-weight: 600; }
+.row .desc { grid-column: 1 / -1; color: var(--muted); font-size: 14px; margin-top: -2px; }
+.row.sub { padding-left: 18px; }
+.row.disabled { opacity: .45; }
+select, input[type="text"], input[type="number"] {
+  font: 600 15px "Nunito", sans-serif; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0;
+}
+select:focus, input:focus, button:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.seed { display: flex; gap: 8px; }
+.seed input { width: 150px; }
+.seed button, .ghost {
+  border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+  border-radius: 8px; padding: 6px 10px; font: 600 14px "Nunito", sans-serif; cursor: pointer;
+}
+/* switch */
+.switch { position: relative; width: 46px; height: 26px; flex: none; }
+.switch input { appearance: none; -webkit-appearance: none; margin: 0; width: 46px; height: 26px; border-radius: 999px;
+  background: var(--line); cursor: pointer; transition: background .15s; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s; }
+.switch input:checked { background: var(--curtain); }
+.switch input:checked::after { transform: translateX(20px); }
+.switch input:disabled { cursor: not-allowed; }
+
+/* JP rom box */
+#jpBox { display: none; margin-top: 4px; }
+#jpBox.show { display: block; }
+
+/* go */
+.go {
+  display: block; width: 100%; border: 0; border-radius: 14px; padding: 16px;
+  background: linear-gradient(180deg, var(--gold), #d18f06); color: var(--gold-ink);
+  font: 400 22px "Bowlby One", sans-serif; letter-spacing: .5px; cursor: pointer;
+  box-shadow: 0 4px 0 #8a5c00;
+}
+.go:active { transform: translateY(2px); box-shadow: 0 2px 0 #8a5c00; }
+.go:disabled { filter: grayscale(.7); opacity: .6; cursor: not-allowed; transform: none; }
+#result { display: none; }
+#result.show { display: block; }
+.dl { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.dl a {
+  display: inline-block; text-decoration: none; font-weight: 800;
+  border-radius: 10px; padding: 10px 16px; background: var(--curtain); color: #fff4dc;
+}
+.dl a.secondary { background: var(--chip); color: var(--ink); border: 1px solid var(--line); }
+details { margin-top: 12px; }
+summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+pre { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px; font-size: 12.5px; max-height: 360px; overflow: auto; }
+footer { text-align: center; color: var(--muted); font-size: 14px; padding: 0 16px 40px; }
+.theme { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,.25); color: #fff4dc;
+  border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 4px 10px; font: 600 13px "Nunito", sans-serif; cursor: pointer; }
+select { max-width: 56vw; }
+@media (max-width: 520px) {
+  .seed input { width: 110px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <button class="theme" id="themeBtn" type="button" aria-label="Switch colour theme">◐ Theme</button>
+  <h1>Dynamite Headdy<small>Randomizer</small></h1>
+  <p>Shuffle Headcases, recolour the stages and bring back the Japanese balance. Everything runs in your browser: your ROM is never uploaded.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2><span class="step">1</span>Your ROM</h2>
+    <p class="hint">Dynamite Headdy (USA, Europe), as a .md, .bin or .gen file. No ROM is provided here.</p>
+    <label class="drop" id="usDrop">
+      <span class="icon" aria-hidden="true">🎭</span>
+      <span><strong>Choose or drop your ROM</strong><span class="sub" id="usName">No file chosen</span></span>
+      <input type="file" id="usFile" accept=".md,.bin,.gen,.smd">
+    </label>
+    <div class="status" id="usStatus" role="status"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="step">2</span>Options</h2>
+    <p class="hint">Start from a preset or set things yourself. Same seed + same options = same ROM, so you can race a seed with friends.</p>
+    <div class="presets" role="group" aria-label="Presets">
+      <button type="button" data-preset="standard">Standard</button>
+      <button type="button" data-preset="casual">Casual</button>
+      <button type="button" data-preset="chaos">Chaos</button>
+      <button type="button" data-preset="jp">Just JP balance</button>
+    </div>
+
+    <fieldset>
+      <legend>Seed</legend>
+      <div class="row">
+        <label for="seed">Seed</label>
+        <div class="seed">
+          <input type="number" id="seed" min="0" max="2147483647" placeholder="random">
+          <button type="button" id="dice" title="New random seed">🎲</button>
+        </div>
+        <div class="desc">Leave it blank for a random one. It's written at the top of the spoiler log.</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Headcases</legend>
+      <div class="row">
+        <label for="headcases">Headcase shuffle</label>
+        <select id="headcases">
+          <option value="off">Off</option>
+          <option value="safe">Safe</option>
+          <option value="chaos">Chaos</option>
+        </select>
+        <div class="desc">Safe: every Headcase keeps one of its original heads. Chaos: anything goes. The heads needed to finish each stage are always guaranteed.</div>
+      </div>
+      <div class="row sub hc">
+        <label for="bonus_logic">Bonus point logic</label>
+        <span class="switch"><input type="checkbox" id="bonus_logic"></span>
+        <div class="desc">Also guarantee the heads needed for every Secret Bonus Point.</div>
+      </div>
+      <div class="row sub hc">
+        <label for="headtrip">Allow Head Trip</label>
+        <span class="switch"><input type="checkbox" id="headtrip"></span>
+        <div class="desc">The head that reverses your controls.</div>
+      </div>
+      <div class="row sub hc">
+        <label for="flying_heads">Allow flying heads</label>
+        <span class="switch"><input type="checkbox" id="flying_heads"></span>
+        <div class="desc">Rocket, Air and Feather Head outside act 6. Press A to drop them. Their shots look garbled outside 6-1.</div>
+      </div>
+      <div class="row sub hc">
+        <label for="shuffle_3_2">Shuffle 3-2's switching Headcase</label>
+        <span class="switch"><input type="checkbox" id="shuffle_3_2"></span>
+        <div class="desc">The one that changes contents during the stage.</div>
+      </div>
+      <div class="row sub hc">
+        <label for="boss_bomb">Bomb Head at the act 7 boss</label>
+        <span class="switch"><input type="checkbox" id="boss_bomb"></span>
+        <div class="desc">Keep Bomb Head available for that fight.</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Colours</legend>
+      <div class="row">
+        <label for="palettes">Stage palettes</label>
+        <select id="palettes">
+          <option value="off">Off</option>
+          <option value="safe">Safe</option>
+          <option value="hue">Hue</option>
+          <option value="chaos">Chaos</option>
+        </select>
+        <div class="desc">Safe: gentle shifts and warm, cool, dusk or muted moods that keep every colour's brightness. Hue: any colour rotation. Chaos: swapped and inverted colours.</div>
+      </div>
+      <div class="row sub" id="spritesRow">
+        <label for="palette_sprites">Recolour Headdy and enemies too</label>
+        <span class="switch"><input type="checkbox" id="palette_sprites"></span>
+        <div class="desc">Off by default, so you can still recognise them.</div>
+      </div>
+      <div class="row">
+        <label for="jp_palettes">Japanese palettes</label>
+        <span class="switch"><input type="checkbox" id="jp_palettes"></span>
+        <div class="desc">Restore the colours of the 8 palettes the US version changed. Needs the Japanese ROM.</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Difficulty</legend>
+      <div class="row">
+        <label for="enemy_damage">Enemy damage</label>
+        <select id="enemy_damage">
+          <option value="off">Normal</option>
+          <option value="random">Shuffled (×0.5–×2 per enemy)</option>
+          <option value="half">Half</option>
+          <option value="double">Double</option>
+        </select>
+        <div class="desc">Damage when enemies touch Headdy.</div>
+      </div>
+      <div class="row">
+        <label for="jp_balance">Japanese balance</label>
+        <span class="switch"><input type="checkbox" id="jp_balance"></span>
+        <div class="desc">The easier Japanese release: 2 starting continues, a continue every 10 tokens, gentler bosses, the JP 6-1 waves and the 3-1 Headcase the US version removed. Needs the Japanese ROM.</div>
+      </div>
+      <div id="jpBox">
+        <label class="drop" id="jpDrop">
+          <span class="icon" aria-hidden="true">🗾</span>
+          <span><strong>Choose the Japanese ROM</strong><span class="sub" id="jpName">Dynamite Headdy (Japan). The JP code and colours are copied from it.</span></span>
+          <input type="file" id="jpFile" accept=".md,.bin,.gen,.smd">
+        </label>
+        <div class="status" id="jpStatus" role="status"></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Extras</legend>
+      <div class="row">
+        <label for="hub">Stage-select hub</label>
+        <span class="switch"><input type="checkbox" id="hub"></span>
+        <div class="desc">Start opens a stage select instead of a new game. Every act returns there when you finish it, and it counts your Secret Bonus Points and remembers the code digits.</div>
+      </div>
+      <div class="row sub" id="lockedRow">
+        <label for="hub_locked">Unlock stages as you clear them</label>
+        <span class="switch"><input type="checkbox" id="hub_locked"></span>
+        <div class="desc">Off: every stage is open from the start.</div>
+      </div>
+    </fieldset>
+  </section>
+
+  <section class="panel">
+    <h2><span class="step">3</span>Randomize</h2>
+    <button class="go" id="go" type="button" disabled>Loading…</button>
+    <div class="status" id="goStatus" role="status">Loading the randomizer (about 10 MB, only the first time)…</div>
+    <div id="result">
+      <div class="dl">
+        <a id="dlRom" href="#" download>⬇ Download ROM</a>
+        <a id="dlLog" class="secondary" href="#" download>Spoiler log</a>
+      </div>
+      <details>
+        <summary>Show the spoiler log</summary>
+        <pre id="log"></pre>
+      </details>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Playing</h2>
+    <p>Open the ROM in any Mega Drive / Genesis emulator (BizHawk, Genesis Plus GX, Kega Fusion…) or on a flash cart. For an Archipelago multiworld, use the <a href="https://github.com/Seekers-of-Sahul/dynamite-headdy-rando/tree/main/archipelago">apworld</a> instead; it patches the game for you.</p>
+  </section>
+</main>
+
+<footer>
+  <a href="https://github.com/Seekers-of-Sahul/dynamite-headdy-rando">Source on GitHub</a> ·
+  Dynamite Headdy is © Sega / Treasure. This fan project isn't affiliated with them.
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const BOOLS = ["bonus_logic", "headtrip", "flying_heads", "shuffle_3_2", "boss_bomb",
+               "palette_sprites", "jp_palettes", "jp_balance", "hub", "hub_locked"];
+const SELECTS = ["headcases", "palettes", "enemy_damage"];
+const DEFAULTS = {headcases: "safe", bonus_logic: true, headtrip: true, flying_heads: false,
+  shuffle_3_2: false, boss_bomb: true, palettes: "off", palette_sprites: false, jp_palettes: false,
+  enemy_damage: "off", jp_balance: false, hub: false, hub_locked: false};
+const PRESETS = {
+  standard: {},
+  casual: {palettes: "safe", jp_balance: true, jp_palettes: true, headtrip: false},
+  chaos: {headcases: "chaos", flying_heads: true, palettes: "chaos", palette_sprites: true, enemy_damage: "random"},
+  jp: {headcases: "off", jp_balance: true, jp_palettes: true},
+};
+const STORE = "headdy-rando-options";
+
+let py = null, usRom = null, jpRom = null;
+
+// ---------------------------------------------------------------- options
+function getOpts() {
+  const o = {};
+  for (const k of BOOLS) o[k] = $(k).checked;
+  for (const k of SELECTS) o[k] = $(k).value;
+  return o;
+}
+function setOpts(o) {
+  for (const k of BOOLS) if (k in o) $(k).checked = !!o[k];
+  for (const k of SELECTS) if (k in o) $(k).value = o[k];
+  refresh();
+}
+function refresh() {
+  const hcOff = $("headcases").value === "off";
+  document.querySelectorAll(".hc").forEach(r => {
+    r.classList.toggle("disabled", hcOff);
+    r.querySelector("input").disabled = hcOff;
+  });
+  const palOff = $("palettes").value === "off";
+  $("spritesRow").classList.toggle("disabled", palOff);
+  $("palette_sprites").disabled = palOff;
+  const hubOff = !$("hub").checked;
+  $("lockedRow").classList.toggle("disabled", hubOff);
+  $("hub_locked").disabled = hubOff;
+  $("jpBox").classList.toggle("show", needJp());
+  const o = getOpts();
+  document.querySelectorAll("[data-preset]").forEach(b => {
+    const p = Object.assign({}, DEFAULTS, PRESETS[b.dataset.preset]);
+    b.setAttribute("aria-pressed", Object.keys(p).every(k => p[k] === o[k]) ? "true" : "false");
+  });
+  try { localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) {}
+  $("result").classList.remove("show");      // an old download no longer matches the options
+  updateGo();
+}
+function needJp() { return $("jp_balance").checked || $("jp_palettes").checked; }
+
+document.querySelectorAll("[data-preset]").forEach(b =>
+  b.addEventListener("click", () => setOpts(Object.assign({}, DEFAULTS, PRESETS[b.dataset.preset]))));
+document.querySelectorAll("input, select").forEach(el => el.addEventListener("change", refresh));
+$("seed").addEventListener("input", () => $("result").classList.remove("show"));
+$("dice").addEventListener("click", () => { $("seed").value = Math.floor(Math.random() * 2147483647); $("result").classList.remove("show"); });
+
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(STORE) || "{}") || {}; } catch (e) {}
+setOpts(Object.assign({}, DEFAULTS, saved));
+
+// ---------------------------------------------------------------- theme
+$("themeBtn").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark"
+                                  : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("headdy-theme", root.dataset.theme); } catch (e) {}
+});
+try { const t = localStorage.getItem("headdy-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+// ---------------------------------------------------------------- ROM files
+function status(el, cls, text) { el.className = "status " + cls; el.textContent = text; }
+
+async function sha1(buf) {
+  const h = await crypto.subtle.digest("SHA-1", buf);
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+// .smd files are interleaved 16 KB blocks with a 512-byte header; turn them into plain ROMs.
+function deSmd(u8) {
+  if (u8.length % 16384 !== 512 || u8[8] !== 0xAA || u8[9] !== 0xBB) return u8;
+  const out = new Uint8Array(u8.length - 512);
+  for (let b = 0; b < out.length / 16384; b++) {
+    const src = 512 + b * 16384;
+    for (let i = 0; i < 8192; i++) {
+      out[b * 16384 + i * 2 + 1] = u8[src + i];
+      out[b * 16384 + i * 2] = u8[src + 8192 + i];
+    }
+  }
+  return out;
+}
+const US_SHA1 = "e843decdff262791b1237f1545f5b17c56712d5f";
+
+async function loadRom(file, which) {
+  const el = which === "us" ? $("usStatus") : $("jpStatus");
+  $(which + "Name").textContent = file.name;
+  const u8 = deSmd(new Uint8Array(await file.arrayBuffer()));
+  if (which === "us") {
+    usRom = u8;
+    const h = await sha1(u8);
+    if (h === US_SHA1) status(el, "ok", "✓ Dynamite Headdy (USA, Europe) — good to go.");
+    else if (u8.length === 2097152) status(el, "warn", "⚠ Not the known USA/Europe ROM. It may still work, but things could break. (The Japanese ROM can't be randomized; it's only used for the JP options.)");
+    else status(el, "err", "✗ This doesn't look like Dynamite Headdy (wrong size).");
+  } else {
+    jpRom = u8;
+    const ok = py ? py.runPython("check_jp")(u8) : null;
+    if (ok === true || ok === null) status(el, "ok", ok ? "✓ Dynamite Headdy (Japan) — good to go." : "Loaded.");
+    else { status(el, "err", "✗ That isn't Dynamite Headdy (Japan)."); jpRom = null; }
+  }
+  updateGo();
+}
+for (const which of ["us", "jp"]) {
+  const input = $(which + "File"), drop = $(which + "Drop");
+  input.addEventListener("change", () => input.files[0] && loadRom(input.files[0], which));
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => {
+    e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer.files[0]) loadRom(e.dataTransfer.files[0], which);
+  });
+}
+
+// ---------------------------------------------------------------- go
+function updateGo() {
+  const go = $("go");
+  if (!py) { go.disabled = true; return; }
+  let why = "";
+  if (!usRom) why = "Choose your ROM first.";
+  else if (needJp() && !jpRom) why = "The JP options need the Japanese ROM.";
+  go.disabled = !!why;
+  go.textContent = "Randomize!";
+  status($("goStatus"), "", why);
+}
+
+let urls = [];
+$("go").addEventListener("click", async () => {
+  const go = $("go");
+  go.disabled = true; go.textContent = "Working…";
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const o = getOpts();
+    const seedText = $("seed").value.trim();
+    const opts = {};
+    for (const k of Object.keys(o)) if (k !== "hub" && k !== "hub_locked") opts[k] = o[k];
+    opts.seed = seedText === "" ? null : Number(seedText);
+    const run = py.runPython("run");
+    const res = run(usRom, needJp() ? jpRom : null, JSON.stringify(opts), o.hub, o.hub_locked);
+    const [romProxy, log, seed] = res.toJs();
+    res.destroy();
+    const rom = romProxy;            // Uint8Array
+    urls.forEach(u => URL.revokeObjectURL(u));
+    const romUrl = URL.createObjectURL(new Blob([rom], {type: "application/octet-stream"}));
+    const logUrl = URL.createObjectURL(new Blob([log], {type: "text/plain"}));
+    urls = [romUrl, logUrl];
+    const base = "Dynamite Headdy Rando " + seed;
+    $("dlRom").href = romUrl; $("dlRom").download = base + ".md";
+    $("dlLog").href = logUrl; $("dlLog").download = base + ".spoiler.txt";
+    $("log").textContent = log;
+    $("result").classList.add("show");
+    status($("goStatus"), "ok", "✓ Done — seed " + seed + ".");
+  } catch (e) {
+    const msg = String(e.message || e).trim().split("\n").filter(Boolean).pop();
+    status($("goStatus"), "err", "✗ " + msg);
+  }
+  go.textContent = "Randomize!";
+  go.disabled = false;
+});
+
+// ---------------------------------------------------------------- Python
+const GLUE = `
+import json, hashlib
+import headdy_rando, ap_hub_patch
+
+def check_jp(u8):
+    return hashlib.md5(bytes(u8.to_py())).hexdigest() == headdy_rando.JP_MD5
+
+def run(us, jp, opts_json, hub, hub_locked):
+    opts = json.loads(opts_json)
+    opts = {k: v for k, v in opts.items() if k in headdy_rando.OPTIONS}
+    o = headdy_rando.normalize(opts)
+    rom, log = headdy_rando.randomize(bytes(us.to_py()), o, bytes(jp.to_py()) if jp is not None else None)
+    if hub:
+        rom = bytearray(rom)
+        ap_hub_patch.apply(rom, 0x00000002 if hub_locked else 0x3FFFFFFE, ap=False)
+        log += '\\nStage-select hub: on (%s)\\n' % ('stages unlock as you clear them' if hub_locked else 'every stage open')
+        rom = bytes(rom)
+    return [rom, log, o['seed']]
+`;
+(async () => {
+  try {
+    py = await loadPyodide();
+    for (const f of ["headdy_rando.py", "ap_hub_patch.py"]) {
+      const r = await fetch("randomizer/" + f);
+      if (!r.ok) throw new Error("couldn't load " + f);
+      py.FS.writeFile(f, await r.text());
+    }
+    py.runPython("import sys; sys.path.insert(0, '.')");
+    py.runPython(GLUE);
+    if (jpRom) {                 // a JP ROM picked before Python was ready: check it now
+      if (!py.runPython("check_jp")(jpRom)) { status($("jpStatus"), "err", "✗ That isn't Dynamite Headdy (Japan)."); jpRom = null; }
+      else status($("jpStatus"), "ok", "✓ Dynamite Headdy (Japan) — good to go.");
+    }
+    updateGo();
+  } catch (e) {
+    py = null;
+    $("go").textContent = "Unavailable";
+    status($("goStatus"), "err", "✗ The randomizer couldn't load (" + (e.message || e) + "). Try reloading the page.");
+  }
+})();
+</script>
+</body>
+</html>
