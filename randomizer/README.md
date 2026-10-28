@@ -70,8 +70,7 @@ python headdy_rando.py --help
 | `--headcases chaos` | Anything goes, but heads needed to finish a stage are still guaranteed. |
 | `--headcases off` | Headcases stay vanilla. |
 | `--no-bonus-logic` | Don't guarantee the heads needed for Secret Bonus Points. Some may become impossible. |
-| `--no-headtrip` | Never put Head Trip (reversed controls) in a Headcase. |
-| `--shuffle-3-2` | Also shuffle the switching Headcase in 3-2 (it changes contents during the stage). It's vanilla by default. |
+| `--no-headtrip` | Never put Head Trip in a Headcase. It's a head to avoid: your head becomes so big and heavy that it's hard to move around, and enemies easily stomp on you. |
 | `--no-boss-bomb` | Don't guarantee Bomb Head at the act 7 boss. |
 | `--flying-heads` | Allow Rocket, Air and Feather Head in normal Headcases (see below). |
 
@@ -147,6 +146,19 @@ What `--jp-balance` changes:
 - **6-1:** the JP enemy waves (1 shark instead of 5, plus the second Jayron wave) and the longer JP stage.
 - **Layouts:** the **3-1 Headcase** the US version removed is back, along with the JP layouts of 6-2 and 6-4.
 - **Smaller JP tweaks:** some enemy damage, speeds, timers and scores.
+
+---
+
+## Testing flying heads everywhere
+
+`flying_test.py` makes a test ROM with flying heads in **every** Headcase (except 6-1's), using the same A-to-drop patch:
+
+```
+python flying_test.py headdy.md flytest.md
+python flying_test.py headdy.md flytest.md --head feather
+```
+
+It also writes `flytest.md.headcases.txt`, a checklist of every Headcase, to tick off as you play. Two-head sets only get Rocket and Air, so use `--head feather` to test Feather Head there. Liberty Head is kept so the basketball games still work; add `--no-liberty` to replace it too.
 
 ---
 

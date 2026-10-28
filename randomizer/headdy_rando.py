@@ -48,9 +48,7 @@ OPTIONS = {
     'bonus_logic':   {'default': True, 'type': 'bool',
                       'desc': 'Guarantee the heads needed for Secret Bonus Points.'},
     'headtrip':      {'default': True, 'type': 'bool',
-                      'desc': 'Allow Head Trip (reversed controls) in Headcases.'},
-    'shuffle_3_2':   {'default': False, 'type': 'bool',
-                      'desc': 'Also shuffle the switching Headcase in 3-2 (sets 14/15).'},
+                      'desc': 'Allow Head Trip (a huge, heavy head that makes you slow and easy to stomp) in Headcases.'},
     'boss_bomb':     {'default': True, 'type': 'bool',
                       'desc': 'Keep Bomb Head available at the act 7 boss.'},
     'flying_heads':  {'default': False, 'type': 'bool',
@@ -259,12 +257,11 @@ def randomize_headcases(rom, rng, o):
         users.setdefault(k, []).append('%s (X=%d)' % (STAGE_NAMES.get(st, '$%02X' % st), x))
     for k, u in RUNTIME_USERS.items():
         users.setdefault(k, []).extend(u)
-    fixed = {44} | (set() if o['shuffle_3_2'] else {14, 15})
+    fixed = {44}                  # the 6-1 Headcase that starts the flight
     no_fly = {rom[e + 5] & 0x7F for st, x, e in find_headcases(rom) if st in FLY_BANNED_STAGES}
-    log = ['== Headcases (%s, bonus logic %s, head trip %s, 3-2 %s, act 7 bomb %s)' % (
+    log = ['== Headcases (%s, bonus logic %s, head trip %s, act 7 bomb %s)' % (
         o['headcases'], 'on' if o['bonus_logic'] else 'off',
         'on' if o['headtrip'] else 'off',
-        'shuffled' if o['shuffle_3_2'] else 'vanilla',
         'kept' if o['boss_bomb'] else 'not kept')]
     for k in range(NUM_SETS):
         old = read_set(rom, k)

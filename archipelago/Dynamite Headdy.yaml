@@ -127,18 +127,14 @@ Dynamite Headdy:
     chaos: 0
 
   head_trip:
-    # Allow Head Trip (reversed controls) in shuffled Headcases.
+    # Allow Head Trip in shuffled Headcases. It's a head to avoid: your head becomes so big and heavy
+    # that it's hard to move around, and enemies easily stomp on you.
     'false': 0
     'true': 50
 
   flying_heads:
     # Allow Rocket, Air and Feather Head in shuffled Headcases. Press A to drop them; they time out
     # like other heads. Never placed in 4-1, 4-3, 5-1, 8-1 or 8-2. Their shots look garbled outside 6-1.
-    'false': 50
-    'true': 0
-
-  shuffle_3_2:
-    # Also shuffle the switching Headcase in 3-2.
     'false': 50
     'true': 0
 

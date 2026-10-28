@@ -49,7 +49,10 @@ class Headcases(Choice):
 
 
 class HeadTrip(DefaultOnToggle):
-    """Allow Head Trip (reversed controls) in shuffled Headcases."""
+    """
+    Allow Head Trip in shuffled Headcases. It's a head to avoid: your head becomes so big and heavy
+    that it's hard to move around, and enemies easily stomp on you.
+    """
     display_name = "Head Trip"
 
 
@@ -59,11 +62,6 @@ class FlyingHeads(Toggle):
     like other heads. Never placed in 4-1, 4-3, 5-1, 8-1 or 8-2. Their shots look garbled outside 6-1.
     """
     display_name = "Flying Heads"
-
-
-class Shuffle32(Toggle):
-    """Also shuffle the switching Headcase in 3-2."""
-    display_name = "Shuffle 3-2 Headcase"
 
 
 class BossBomb(DefaultOnToggle):
@@ -122,7 +120,6 @@ class HeaddyOptions(PerGameCommonOptions):
     headcases: Headcases
     head_trip: HeadTrip
     flying_heads: FlyingHeads
-    shuffle_3_2: Shuffle32
     boss_bomb: BossBomb
     jp_balance: JPBalance
     jp_palettes: JPPalettes

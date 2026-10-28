@@ -10,9 +10,8 @@ Dynamite Headdy:
   starting_stage: act_1_1      # act_1_1 ... act_9_3, act_7, or random
 
   headcases: safe              # off / safe / chaos
-  head_trip: true              # allow Head Trip (reversed controls) in Headcases
+  head_trip: true              # allow Head Trip (huge heavy head, a head to avoid)
   flying_heads: false          # Rocket/Air/Feather in normal Headcases
-  shuffle_3_2: false           # also shuffle 3-2's switching Headcase
   boss_bomb: true              # keep Bomb Head at the act 7 boss
 
   jp_balance: false            # easier Japanese difficulty

@@ -89,7 +89,6 @@ def write_patch(world: "HeaddyWorld", output_directory: str) -> None:
         "headcases": ["off", "safe", "chaos"][o.headcases.value],
         "bonus_logic": True,          # the AP logic assumes every bonus point is reachable
         "headtrip": bool(o.head_trip.value),
-        "shuffle_3_2": bool(o.shuffle_3_2.value),
         "boss_bomb": bool(o.boss_bomb.value),
         "flying_heads": bool(o.flying_heads.value),
         "jp_balance": bool(o.jp_balance.value),
