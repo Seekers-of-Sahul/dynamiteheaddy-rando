@@ -53,8 +53,8 @@ OPTIONS = {
                       'desc': 'Keep Bomb Head available at the act 7 boss.'},
     'flying_heads':  {'default': False, 'type': 'bool',
                       'desc': 'Allow Rocket, Air and Feather Head in normal Headcases. They '
-                              'time out like other heads and A drops them. Their shots look '
-                              'garbled outside 6-1.'},
+                              'time out like other heads and A drops them. Outside act 6 their '
+                              'shots are drawn as stars and fireballs.'},
     'jp_balance':    {'default': False, 'type': 'bool',
                       'desc': 'Japanese difficulty: 2 starting continues, a continue every '
                               '10 tokens, JP enemy damage/HP, JP 1-1 boss, Stair Wars, act 7, '
@@ -241,10 +241,83 @@ def patch_flying_heads(rom):
         if struct.unpack('>I', rom[t:t + 4])[0] not in (0x01155E, 0x011572, 0x01157A):
             raise ValueError('head handler table at $%06X is not the original' % t)
         rom[t:t + 4] = struct.pack('>I', a)
+    patch_flying_shots(rom)
     return ['== Flying heads allowed in Headcases: A drops them, they time out after '
             '%d frames (except in 6-1), and they are cleared on death and stage change '
-            '(except between 6-2 and 6-4). Never in %s.' % (
-                FLY_TIMER, ', '.join(FLY_BANNED_STAGES.values()))]
+            '(except between 6-2 and 6-4). Never in %s. Outside act 6 their shots use '
+            'the star and fireball sprites.' % (FLY_TIMER, ', '.join(FLY_BANNED_STAGES.values()))]
+
+
+# Flying-head shots outside act 6.
+# The shots (object types $6D8 Rocket, $6F4 Rocket trail, $6DC Air, $6E0 Feather)
+# draw tiles $3B0-$3BA, which only act 6 loads; other stages keep their own
+# graphics there, so the shots come out garbled. Video memory is nearly full in
+# most stages, so instead of loading the real art, shots spawned outside act 6
+# get their own animation scripts that draw the star ($34E) and fireball ($34F),
+# which every stage has loaded. Act 6 keeps the real graphics.
+#
+# Objects get their script when spawned ($00095A: move.l $19E4(a3),-$2400(a6),
+# a3 = type). A script step is: flags byte, duration byte, word offset (from the
+# word itself) to a sprite piece; duration 0 jumps by the offset. A piece is:
+# size byte ((w-1)<<2 | h-1), count byte, attribute word (palette 2 + tile), y, x.
+FLY_SHOT = 0x1D6000           # free space (after the Archipelago marker and name)
+SCRIPT_TABLE = 0x0019E4       # animation script per object type
+SPAWN_SCRIPT = 0x00095A
+STAR, FIREBALL = 0x34E, 0x34F
+SHOT_SCRIPTS = {              # type: [(duration, tile)], looping
+    0x6D8: [(1, FIREBALL)],                 # Rocket's beam
+    0x6F4: [(1, FIREBALL), (1, STAR)],      # Rocket's glow / spark
+    0x6DC: [(2, FIREBALL)],                 # Air's ball
+    0x6E0: [(8, STAR), (8, FIREBALL)],      # Feather's shot
+}
+
+
+def patch_flying_shots(rom):
+    claim(rom, FLY_SHOT, 0x100, 'flying-head shots')
+    if bytes(rom[SPAWN_SCRIPT:SPAWN_SCRIPT + 6]) != bytes.fromhex('2d6b19e4dc00'):
+        raise ValueError('object spawn code at $%06X is not the original' % SPAWN_SCRIPT)
+    c = bytearray()
+    # Code: run the original instruction, then for shot types outside stages
+    # $50-$56 (act 6) replace the script with ours.
+    c += bytes.fromhex('2d6b19e4dc00')              # move.l $19E4(a3),-$2400(a6)
+    c += bytes.fromhex('b6fc06d8' '6528'            # cmpa.w #$6D8,a3 / bcs.s done
+                       'b6fc06f4' '6222'            # cmpa.w #$6F4,a3 / bhi.s done
+                       '0c780050e8aa' '6508'        # cmpi.w #$50,$E8AA / bcs.s alt
+                       '0c780056e8aa' '6312'        # cmpi.w #$56,$E8AA / bls.s done
+                       '2f08')                      # alt: move.l a0,-(sp)
+    table_ref = len(c) + 2
+    c += bytes.fromhex('41f900000000'               # lea table-$6D8,a0
+                       '2070b000'                   # movea.l 0(a0,a3.w),a0
+                       '2d48dc00'                   # move.l a0,-$2400(a6)
+                       '205f'                       # movea.l (sp)+,a0
+                       '4e75')                      # done: rts
+    done = len(c) - 2
+    assert (c[11], c[17], c[25], c[33]) == (done - 12, done - 18, 34 - 26, done - 34), 'branch offsets'
+    # Sprite pieces, one per tile used.
+    pieces = {}
+    for t in sorted({t for steps in SHOT_SCRIPTS.values() for _, t in steps}):
+        pieces[t] = FLY_SHOT + len(c)
+        c += struct.pack('>BBHbb', 0, 1, 0x4000 | t, -4, -4)
+    # Scripts
+    scripts = {}
+    for typ, steps in SHOT_SCRIPTS.items():
+        scripts[typ] = start = FLY_SHOT + len(c)
+        for dur, t in steps:
+            here = FLY_SHOT + len(c) + 2
+            c += struct.pack('>BBh', 0, dur, pieces[t] - here)
+        here = FLY_SHOT + len(c) + 2
+        c += struct.pack('>BBh', 0, 0, start - here)            # loop
+    # Table indexed by type - $6D8 (types without a script of ours keep the original)
+    if len(c) % 2:
+        c.append(0)
+    table = FLY_SHOT + len(c)
+    for typ in range(0x6D8, 0x6F8, 4):
+        orig = struct.unpack('>I', rom[SCRIPT_TABLE + typ:SCRIPT_TABLE + typ + 4])[0]
+        c += struct.pack('>I', scripts.get(typ, orig))
+    struct.pack_into('>I', c, table_ref, table - 0x6D8)
+    assert len(c) <= 0x100
+    rom[FLY_SHOT:FLY_SHOT + len(c)] = c
+    rom[SPAWN_SCRIPT:SPAWN_SCRIPT + 6] = struct.pack('>HI', 0x4EB9, FLY_SHOT)
 
 
 def randomize_headcases(rom, rng, o):

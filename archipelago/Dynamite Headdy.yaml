@@ -134,7 +134,8 @@ Dynamite Headdy:
 
   flying_heads:
     # Allow Rocket, Air and Feather Head in shuffled Headcases. Press A to drop them; they time out
-    # like other heads. Never placed in 4-1, 4-3, 5-1, 8-1 or 8-2. Their shots look garbled outside 6-1.
+    # like other heads. Never placed in 4-1, 4-3, 5-1, 8-1 or 8-2. Outside act 6 their shots
+    # are drawn as stars and fireballs.
     'false': 50
     'true': 0
 
