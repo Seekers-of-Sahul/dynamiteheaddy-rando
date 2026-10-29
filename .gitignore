@@ -1,0 +1,21 @@
+# ROMs and anything made from them. Never commit these.
+*.bin
+*.gen
+*.smd
+*.md
+!README.md
+!archipelago/headdy/docs/*.md
+*.spoiler.txt
+*.headcases.txt
+*.apheaddy
+*.zip
+*.state
+
+# Generated
+archipelago/headdy.apworld
+archipelago/headdy/headdy_rando.py
+archipelago/headdy/ap_hub_patch.py
+
+# Python
+__pycache__/
+*.pyc
