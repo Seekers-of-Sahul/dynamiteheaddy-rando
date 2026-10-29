@@ -89,6 +89,7 @@ Bonus logic (on by default) adds:
 - **Spike:** at the 2-2 4th Headcase and in 8-1.
 
 Liberty Head always stays in its sets, because it's how you reach the basketball minigames. The Headcase that gives you your first flying head in 6-1 is never changed.
+Ticker Head is never put in the 8-3 miniboss Headcase: that Headcase circles the miniboss, and stopping time throws it out of step so it vanishes after the fight.
 
 **Flying heads (`--flying-heads`).** Without this option, flying heads never appear in normal stages. With it, they can show up in any shuffled Headcase, and you fly freely around the stage. They then work like the other heads:
 
