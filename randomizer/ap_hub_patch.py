@@ -42,6 +42,7 @@ RAM used (unused by the game; this area survives soft resets):
   $FFFFF8.w  backup of the 4 secret-door digits, one nibble each, $F = unknown
   $FFFFFA.b  slot of the object that gave the last bonus point
   $FFFFFB.b  game ID of the last bonus point
+  $FFFFFE.b  Archipelago DeathLink: the client sets it to 1 to make Headdy die
 On first use every entry except 0-1 is unlocked (standalone play). 0-1 (the
 opening) is never selectable.
 An Archipelago client would overwrite it with the stages the player owns.
@@ -72,6 +73,11 @@ STAGE_9_3 = 0x30              # last act; it's followed by the ending (credits, 
 SECRET_BOSS, CONTINUE = 0x38, 0x3A     # secret boss stage (no lives lost there); continue stage
 BIT_9_3, BIT_SECRET = 29, 30           # bits in the cleared mask
 ITEMS_RECEIVED = 0xFFFC       # word: items the AP client has applied (survives soft reset)
+DEATH_REQ = 0xFFFE            # byte: set by the AP client to kill Headdy (DeathLink)
+MODE_TABLE = 0x0004C2         # game mode handlers (long each, mode = offset)
+PLAY_MODE, PLAY_HANDLER = 0x20, 0x0144D8
+KILL = 0x010B0E               # the game's own "Headdy dies" routine (pits call it too)
+NO_DEATH_STAGES = (0x08, 0x0A, 0x44)   # tutorial rooms and basketball: no dying there
 BB_DIGITS = 0xFFF8            # backup of the 4 secret digits, one nibble each ($F = unknown)
 E8F6 = 0xE8F6                 # bonus points taken in the current scene (game's own)
 E8AA, E8C4, E80A, E80B, E806, E8FE = 0xE8AA, 0xE8C4, 0xE80A, 0xE80B, 0xE806, 0xE8FE
@@ -168,6 +174,7 @@ def build(ap=False):
     a.w(0x4238, LASTSTAGE)                      # clr.b LASTSTAGE
     a.w(0x31FC, 0xFFFF, BB_DIGITS)              # move.w #$FFFF,BB_DIGITS (no digits yet)
     a.w(0x4278, ITEMS_RECEIVED)                 # clr.w ITEMS_RECEIVED (client's counter)
+    a.w(0x4238, DEATH_REQ)                      # clr.b DEATH_REQ
     a.w(0x31FC, 0x4150, MAGIC)                  # move.w #'AP',MAGIC
     a.label('ei_ok')
     a.w(0x4E75)                                 # rts
@@ -529,6 +536,27 @@ def build(ap=False):
     for stage, bid, slot, bit in BONUS_REMAP:
         a.w(stage, bid, slot & 0xFFFF, bit)
     a.w(0xFFFF)
+
+    if ap:
+        # dl_frame: runs first in every frame of play (mode $20). When the client
+        # asks for a DeathLink death, call the game's death routine, unless the game
+        # is paused (wait), Headdy is already dying, or deaths can't happen here.
+        a.label('dl_frame')
+        a.w(0x4A38, DEATH_REQ)                  # tst.b DEATH_REQ
+        a.br(BEQ, 'dl_play')
+        a.w(0x4A78, 0xE806)                     # tst.w $E806 (paused)
+        a.br(BNE, 'dl_play')
+        a.w(0x4238, DEATH_REQ)                  # clr.b DEATH_REQ
+        a.w(0x0C78, 0x0008, 0xE600)             # cmpi.w #8,$E600 (already dying)
+        a.br(BEQ, 'dl_play')
+        for st in NO_DEATH_STAGES:
+            a.w(0x0C78, st, E8AA)               # cmpi.w #stage,$E8AA
+            a.br(BEQ, 'dl_play')
+        a.w(0x48E7, 0xFFFE)                     # movem.l d0-d7/a0-a6,-(sp)
+        a.w(0x4EB9); a.l(KILL)                  # jsr KILL
+        a.w(0x4CDF, 0x7FFF)                     # movem.l (sp)+,d0-d7/a0-a6
+        a.label('dl_play')
+        a.w(0x4EF9); a.l(PLAY_HANDLER)          # jmp the play-mode handler
     return a
 
 
@@ -562,6 +590,8 @@ def hooks(L, ap=False):
         # basketball won: bsr store_digit ($056D5E) -> nops. Digits come from
         # Archipelago items; the win still counts towards the limit of 4.
         h.append((0x056CFC, '6100 0060', bytes.fromhex('4E714E71')))
+        # play-mode handler pointer -> dl_frame (DeathLink)
+        h.append((MODE_TABLE + PLAY_MODE, '0001 44D8', struct.pack('>I', L['dl_frame'])))
     return h
 
 
