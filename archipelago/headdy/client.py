@@ -6,15 +6,21 @@ checked locations, and writes what the multiworld has given the player:
   - code digits   -> the game's digit cells and the hub's reset-proof backup
   - filler        -> applied once each, counted at $FFFFFC so a soft reset or
                      reconnect doesn't hand them out twice
+DeathLink: Headdy's routine ($FFE600) turning to 8 means he died; a death from
+another player sets $FFFFFE, and the hub patch calls the game's death routine.
 """
 import logging
+import time
 from typing import TYPE_CHECKING
+
+from typing import Any
 
 from NetUtils import ClientStatus
 from worlds._bizhawk import read, write
 from worlds._bizhawk.client import BizHawkClient
 
-from .data import (BONUS_POINTS, GAME, RAM_BB_STAGES, RAM_BONUS, RAM_CLEARED, RAM_CONTINUES, RAM_DIGITS_BACKUP,
+from .data import (BONUS_POINTS, DYING, GAME, RAM_BB_STAGES, RAM_BONUS, RAM_CLEARED, RAM_CONTINUES, RAM_DEATH_REQ,
+                   RAM_DIGITS_BACKUP, RAM_HEADDY_STATE,
                    RAM_GAME_DIGITS, RAM_HEALTH, RAM_HUB_BLOCK, RAM_HUBFLAG, RAM_ITEMS, RAM_LIVES, RAM_MAGIC, RAM_MODE,
                    RAM_UNLOCK, ROM_MARKER, ROM_MARKER_ADDR, ROM_NAME_ADDR, SECRET_BOSS_BIT, STAGES)
 
@@ -48,6 +54,10 @@ class HeaddyClient(BizHawkClient):
         self.goal_sent = False
         self.last_note = ""
         self.notify_set = False
+        self.pending_kill = False      # a DeathLink arrived; kill Headdy when possible
+        self.kill_sent_at = 0.0        # when we asked the game to kill him (not to echo it)
+        self.was_dying = False
+        self.death_link_set = False
 
     # ------------------------------------------------------------------ helpers
     async def read_rom(self, ctx: "BizHawkClientContext", addr: int, size: int) -> bytes:
@@ -83,6 +93,9 @@ class HeaddyClient(BizHawkClient):
         self.sent = set()
         self.goal_sent = False
         self.notify_set = False
+        self.pending_kill = False
+        self.was_dying = False
+        self.death_link_set = False
         return True
 
     async def set_auth(self, ctx: "BizHawkClientContext") -> None:
@@ -94,6 +107,13 @@ class HeaddyClient(BizHawkClient):
         if self.last_note != key:
             self.last_note = key
             logger.info("Dynamite Headdy: " + msg)
+
+    def on_package(self, ctx: "BizHawkClientContext", cmd: str, args: dict[str, Any]) -> None:
+        if cmd == "Bounced" and "DeathLink" in args.get("tags", []) and "DeathLink" in ctx.tags:
+            data = args.get("data", {})
+            if data.get("source") != ctx.player_names.get(ctx.slot):
+                self.pending_kill = True
+                ctx.last_death_link = max(ctx.last_death_link, data.get("time", time.time()))
 
     async def game_watcher(self, ctx: "BizHawkClientContext") -> None:
         try:
@@ -111,14 +131,18 @@ class HeaddyClient(BizHawkClient):
             return
 
         # The hub's block $FFE0-$FFFF, plus game state.
-        hub, digits, misc = await self.read_ram(ctx, [(RAM_HUB_BLOCK, 0x20), (RAM_GAME_DIGITS, 8), (RAM_MODE, 2)])
+        if not self.death_link_set:
+            await ctx.update_death_link(bool(ctx.slot_data.get("death_link")))
+            self.death_link_set = True
+        hub, digits, misc, state = await self.read_ram(
+            ctx, [(RAM_HUB_BLOCK, 0x20), (RAM_GAME_DIGITS, 8), (RAM_MODE, 2), (RAM_HEADDY_STATE, 2)])
         if self.ram_swapped is None:
             magic = hub[RAM_MAGIC - RAM_HUB_BLOCK:RAM_MAGIC - RAM_HUB_BLOCK + 2]
             if magic == b"AP":
                 self.ram_swapped = False
             elif magic == b"PA":
                 self.ram_swapped = True
-                hub, digits, misc = [_swap(b) for b in (hub, digits, misc)]
+                hub, digits, misc, state = [_swap(b) for b in (hub, digits, misc, state)]
             else:
                 self.note("nohub " + magic.hex(), "waiting for the stage-select hub (press Start on the title "
                           "screen). Hub RAM reads %s." % hub.hex())
@@ -242,6 +266,25 @@ class HeaddyClient(BizHawkClient):
             # The stage select drew its "nn OF 39 SBPS" / code lines before we got here:
             # ask the hub to redraw them (REDRAW = 3: stage number, SBP line, code line).
             writes.append(self.ram_write(RAM_HUBFLAG, bytes([u8(RAM_HUBFLAG), 3])))
+        # ---------------------------------------------------------- DeathLink
+        dying = mode == MODE_PLAYING and int.from_bytes(state, "big") == DYING
+        if "DeathLink" in ctx.tags:
+            if self.pending_kill:
+                # Only during play (deaths in the stage select are dropped). The hub patch
+                # waits while paused and ignores it where Headdy can't die.
+                if mode == MODE_PLAYING and not dying:
+                    writes.append(self.ram_write(RAM_DEATH_REQ, bytes([1, u8(RAM_DEATH_REQ + 1)])))
+                    self.kill_sent_at = time.time()
+                self.pending_kill = False
+            if u8(RAM_DEATH_REQ):
+                self.kill_sent_at = time.time()      # still waiting in the game (paused)
+            if dying and not self.was_dying:
+                if time.time() - self.kill_sent_at < 10:
+                    self.kill_sent_at = 0.0          # our own DeathLink death: don't send it back
+                else:
+                    await ctx.send_death("%s's Headdy lost his head." % ctx.player_names.get(ctx.slot, "Someone"))
+        self.was_dying = dying
+
         if writes:
             await write(ctx.bizhawk_ctx, writes)
 

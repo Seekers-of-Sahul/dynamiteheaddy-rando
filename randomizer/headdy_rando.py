@@ -127,6 +127,7 @@ NAMES = {
     0x240: 'Air', 0x260: 'Feather',
 }
 SLAMMER, SPIKE, PIN, PROTECTOR, BOMB, LIBERTY = 0x020, 0x080, 0x100, 0x200, 0x120, 0x0C0
+TICKER = 0x060
 POOL = [0x020, 0x040, 0x060, 0x080, 0x0A0, 0x0E0, 0x100, 0x120, 0x140,
         0x160, 0x1A0, 0x1C0, 0x1E0, 0x200]
 PROGRESSION = {
@@ -150,6 +151,10 @@ BONUS = {
 # free of them. They never count for the requirements above: they can't break
 # Spike's wooden boards (2-2, 8-3) or fit Pin's paths.
 FLY_BANNED_STAGES = {0x04: '4-1', 0x18: '4-3', 0x36: '5-1', 0x24: '8-2'}
+# Heads that break a particular Headcase.
+# Set 10, the 8-3 miniboss Headcase, circles the miniboss. Ticker stops time for the
+# Headcase but not the boss, so it falls out of step and vanishes after the fight.
+SET_BANS = {10: {TICKER}}
 RUNTIME_USERS = {
     **{k: ['2-3 boss (random 14-29)'] for k in range(14, 30)},
     14: ['3-2 switching Headcase', '2-3 boss (random 14-29)'],
@@ -355,7 +360,8 @@ def randomize_headcases(rom, rng, o):
             if keep and len(heads) < len(old):
                 heads.append(rng.choice(keep))
         size = max(len(old), len(heads))
-        set_pool = [h for h in pool if not (k in no_fly and h in FLYING)]
+        set_pool = [h for h in pool if not (k in no_fly and h in FLYING)
+                    and h not in SET_BANS.get(k, ())]
         while len(heads) < size:
             h = rng.choice(set_pool)
             if h not in heads:

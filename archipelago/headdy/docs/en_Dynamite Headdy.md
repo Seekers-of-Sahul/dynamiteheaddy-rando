@@ -25,6 +25,12 @@ number of Secret Bonus Points and beat 9-3.
 - Secret Code Digits 1-4 (basketball wins no longer give digits)
 - Extra lives, continues and health refills
 
+## Does it support DeathLink?
+
+Yes, with the `death_link` option. When Headdy dies, everyone else with DeathLink dies too, and when
+they die, so does Headdy. A death that arrives while you are in the stage select, a tutorial room or a
+basketball game is ignored; one that arrives while the game is paused happens when you unpause.
+
 ## What does another world's item look like in Dynamite Headdy?
 
 Nothing changes on screen: the check is sent when you clear the act, take the bonus point or win the game.

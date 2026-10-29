@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from .data import STAGES
-from Options import Choice, DefaultOnToggle, PerGameCommonOptions, Range, Toggle
+from Options import Choice, DeathLink, DefaultOnToggle, PerGameCommonOptions, Range, Toggle
 
 
 class Goal(Choice):
@@ -127,3 +127,4 @@ class HeaddyOptions(PerGameCommonOptions):
     palettes: Palettes
     palette_sprites: PaletteSprites
     enemy_damage: EnemyDamage
+    death_link: DeathLink

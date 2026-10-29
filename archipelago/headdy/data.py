@@ -79,6 +79,9 @@ RAM_CONTINUES = 0xE93C      # word
 RAM_HEALTH = 0xD200         # word, $20 = full
 RAM_MODE = 0xE802           # word, $20 = playing
 RAM_STAGE = 0xE8AA          # word
+RAM_HEADDY_STATE = 0xE600   # word: Headdy's routine; 8 = dying
+RAM_DEATH_REQ = 0xFFFE      # byte: set to 1 to make Headdy die (DeathLink, hub patch)
+DYING = 8
 
 # ROM marker written by the patch (outside the checksummed area).
 ROM_MARKER_ADDR = 0x1D5E00

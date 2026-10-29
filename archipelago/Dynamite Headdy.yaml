@@ -207,6 +207,12 @@ Dynamite Headdy:
     # Prevent these locations from having an unimportant item.
     []
 
+  death_link:
+    # When you die, everyone else with DeathLink on dies too, and vice versa.
+    # Deaths that arrive in the stage select, the tutorial rooms or basketball are ignored.
+    'false': 50
+    'true': 0
+
   item_links:
     # Share part of your item pool with other players.
     []

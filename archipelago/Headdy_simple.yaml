@@ -19,3 +19,4 @@ Dynamite Headdy:
   palettes: safe               # off / safe / hue / chaos
   palette_sprites: false       # also recolour Headdy and enemies
   enemy_damage: vanilla        # vanilla / shuffled / half / double
+  death_link: false            # die when another DeathLink player dies, and vice versa

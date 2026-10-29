@@ -140,4 +140,5 @@ class HeaddyWorld(World):
             "required_bonus_points": self.options.required_bonus_points.value,
             "code": self.code,
             "starting_stage_bit": self.starting_stage_bit,
+            "death_link": bool(self.options.death_link.value),
         }
