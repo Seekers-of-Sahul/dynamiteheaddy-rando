@@ -10,6 +10,7 @@ Requires Archipelago 0.6.8 or newer and BizHawk 2.10 or newer (tested with 2.11.
 - **Goal** (pick one): beat the secret boss behind the door after the credits, beat 9-3, or collect a number of Secret Bonus Points and beat 9-3.
 - Basketball wins no longer give code digits; the digits come from the multiworld instead.
 - After a hard reset or closing the emulator, the client restores your bonus points, act clears and basketball progress from the server.
+- DeathLink is supported (the `death_link` option).
 
 All the randomizer options (Headcases, flying heads, palettes, enemy damage, JP balance) are available as YAML options.
 
