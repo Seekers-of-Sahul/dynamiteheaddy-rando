@@ -637,7 +637,43 @@ def randomize_stats(rom, rng, o):
                 if o['enemy_damage'] == 'random':
                     log.append('type $%03X  %d -> %d' % (t, d, n))
         log.append('%d object types changed' % changed)
+        patch_odd_health(rom)
     return log
+
+
+# The original damage values are all even, and the game relies on health being even:
+# - the health spotlight's colour is a word table indexed by health ($0158CC: lea
+#   $15CC6(pc),a0 / move.w (a0,d0.w),$B35C); odd health reads a misaligned word
+#   (wrong colours in emulators, an address error on a real console);
+# - a regeneration routine ($017B54) adds 2 until health is exactly 32, so odd
+#   health would climb past the maximum.
+# Halved or shuffled damage can be odd, so: round health up to even (max 32) for
+# the colour, and clamp the regeneration at 32.
+HEALTH_FIX = 0x1D6100
+HP_COLOURS = 0x015CC6
+
+
+def patch_odd_health(rom):
+    claim(rom, HEALTH_FIX, 0x40, 'odd health fix')
+    c = bytearray()
+    colour = HEALTH_FIX
+    c += bytes.fromhex('41f9') + struct.pack('>I', HP_COLOURS)    # lea HP_COLOURS,a0
+    c += bytes.fromhex('5240'                                      # addq.w #1,d0
+                       '0240fffe'                                  # andi.w #$FFFE,d0
+                       '0c400020' '6304'                           # cmpi.w #$20,d0 / bls.s +4
+                       '303c0020'                                  # move.w #$20,d0
+                       '4e75')                                     # rts
+    regen = HEALTH_FIX + len(c)
+    c += bytes.fromhex('5478d200'                                  # addq.w #2,$D200
+                       '0c780020d200' '6306'                       # cmpi.w #$20,$D200 / bls.s +6
+                       '31fc0020d200'                              # move.w #$20,$D200
+                       '4e75')                                     # rts
+    for addr, orig, new in ((0x0158CC, '41fa03f84e71', struct.pack('>HI', 0x4EB9, colour)),
+                            (0x017B68, '5478d2004e75', struct.pack('>HI', 0x4EF9, regen))):
+        if bytes(rom[addr:addr + 6]) != bytes.fromhex(orig):
+            raise ValueError('health code at $%06X is not the original' % addr)
+        rom[addr:addr + 6] = new
+    rom[HEALTH_FIX:HEALTH_FIX + len(c)] = c
 
 
 # ---------------------------------------------------------------- JP balance
