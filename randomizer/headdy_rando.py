@@ -688,7 +688,7 @@ PICKUP_WEIGHTS = {BEAN: 45, POINTS: 45, ONE_UP: 10}
 
 
 def shuffle_pickups(rom, rng, mode='shuffle'):
-    spots = [(s, x, e) for s, x, e in find_placements(rom, ALL_PICKUPS) if rom[e + 5] == 0]
+    spots = find_placements(rom, ALL_PICKUPS)   # (the pickups' own code never reads the parameter)
     points_stages = {s for s, x, e in spots if UNFLOAT.get(w16(rom, e + 6), w16(rom, e + 6)) == POINTS}
     if mode == 'random':
         types = []

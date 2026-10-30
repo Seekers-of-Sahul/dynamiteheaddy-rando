@@ -228,6 +228,12 @@ Dynamite Headdy:
     'false': 50
     'true': 0
 
+  pickupsanity:
+    # Every jelly bean, 500-point item and 1-up placed in the stages is a check (86 of them). Collect it to
+    # send the check; it's still collected as usual. Head Hunter drops don't count.
+    'false': 50
+    'true': 0
+
   trap_percentage:
     # How many of the filler items (extra lives, continues, health refills) are traps instead, in percent.
     # You can define additional values between the minimum and maximum values.

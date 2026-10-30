@@ -18,6 +18,10 @@ number of Secret Bonus Points and beat 9-3.
 - Each of the 39 Secret Bonus Points
 - Winning basketball games 1 to 4 (Liberty Head disappears after the 4th win, as in the original)
 - Beating the secret boss
+- With `pickupsanity`: every jelly bean, 500-point item and 1-up placed in the stages (86 of them;
+  Head Hunter drops don't count). Each one is named after its act and its order from the start of the
+  act, e.g. "2-2 Pickup 3". Keep the client connected while you play: a pickup collected while it isn't
+  is sent the next time you collect it.
 
 ## What items are there?
 

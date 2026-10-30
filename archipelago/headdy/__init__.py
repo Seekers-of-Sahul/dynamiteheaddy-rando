@@ -8,8 +8,8 @@ from worlds.AutoWorld import WebWorld, World
 from .client import HeaddyClient  # noqa: F401  (registers the BizHawk client)
 from .data import BASKETBALL_STAGES, BONUS_POINTS, GAME, STAGES
 from .items import DIGITS, FILLER, TRAPS, HeaddyItem, item_name_groups, item_name_to_id, item_table, unlock_name
-from .locations import (BASKETBALL_WINS, SECRET_BOSS, HeaddyLocation, clear_name, location_name_groups,
-                        location_name_to_id, location_table)
+from .locations import (BASKETBALL_WINS, PICKUP_LOCATIONS, SECRET_BOSS, HeaddyLocation, clear_name,
+                        location_name_groups, location_name_to_id, location_table)
 from .options import Goal, HeaddyOptions
 from .rom import JP_MD5, US_MD5, write_patch
 
@@ -79,8 +79,9 @@ class HeaddyWorld(World):
             regions[stage] = r
             self.multiworld.regions.append(r)
             menu.connect(r, f"To {stage}", lambda state, s=stage: state.has(unlock_name(s), p))
+        skip = set() if self.options.pickupsanity else set(PICKUP_LOCATIONS)
         for name, (code, region) in location_table.items():
-            if region in regions:
+            if region in regions and name not in skip:
                 regions[region].locations.append(HeaddyLocation(p, name, code, regions[region]))
 
         # Basketball: win k needs k different basketball stages reachable.
@@ -132,7 +133,7 @@ class HeaddyWorld(World):
         self.multiworld.push_precollected(self.create_item(start))
         pool = [self.create_item(unlock_name(s)) for _, s, _ in STAGES if unlock_name(s) != start]
         pool += [self.create_item(d) for d in DIGITS]
-        n_locations = len(location_table)
+        n_locations = len(self.multiworld.get_unfilled_locations(self.player))
         while len(pool) < n_locations:
             pool.append(self.create_item(self.filler_or_trap()))
         self.multiworld.itempool += pool
@@ -148,4 +149,5 @@ class HeaddyWorld(World):
             "code": self.code,
             "starting_stage_bit": self.starting_stage_bit,
             "death_link": bool(self.options.death_link.value),
+            "pickupsanity": bool(self.options.pickupsanity.value),
         }

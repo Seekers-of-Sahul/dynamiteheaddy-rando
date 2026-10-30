@@ -8,6 +8,7 @@ checked locations, and writes what the multiworld has given the player:
                      reconnect doesn't hand them out twice
   - traps         -> one at a time through $FFFFE0; the hub patch makes them happen
                      and clears it
+Pickupsanity: the game's collected flags ($FFA800 + saved ID) for the current stage.
 DeathLink: Headdy's routine ($FFE600) turning to 8 means he died; a death from
 another player sets $FFFFFE, and the hub patch calls the game's death routine.
 """
@@ -22,7 +23,7 @@ from worlds._bizhawk import read, write
 from worlds._bizhawk.client import BizHawkClient
 
 from .data import (BONUS_POINTS, DYING, GAME, RAM_BB_STAGES, RAM_BONUS, RAM_CLEARED, RAM_CONTINUES, RAM_DEATH_REQ, RAM_TRAP,
-                   RAM_DIGITS_BACKUP, RAM_HEADDY_STATE,
+                   RAM_DIGITS_BACKUP, RAM_HEADDY_STATE, PICKUP_SPOTS, RAM_COLLECTED, RAM_STAGE_ID,
                    RAM_GAME_DIGITS, RAM_HEALTH, RAM_HUB_BLOCK, RAM_HUBFLAG, RAM_ITEMS, RAM_LIVES, RAM_MAGIC, RAM_MODE,
                    RAM_UNLOCK, ROM_MARKER, ROM_MARKER_ADDR, ROM_NAME_ADDR, SECRET_BOSS_BIT, STAGES)
 
@@ -165,7 +166,7 @@ class HeaddyClient(BizHawkClient):
 
         from .items import DIGITS, TRAPS, item_name_to_id, unlock_name
         id_to_name = {v: k for k, v in item_name_to_id.items()}
-        from .locations import BASKETBALL_WINS, SECRET_BOSS, clear_name
+        from .locations import BASKETBALL_WINS, SECRET_BOSS, clear_name, pickup_name
 
         # ---------------------------------------------------------- locations
         cleared = u32(RAM_CLEARED)
@@ -184,6 +185,13 @@ class HeaddyClient(BizHawkClient):
         for k, name in enumerate(BASKETBALL_WINS, 1):
             if wins >= k:
                 found.add(ids[name])
+        if ctx.slot_data.get("pickupsanity") and int.from_bytes(misc, "big") == MODE_PLAYING:
+            # The game's collected flags for the current stage (cleared when a stage loads).
+            flags, stage = await self.read_ram(ctx, [(RAM_COLLECTED, 0x100), (RAM_STAGE_ID, 2)])
+            stage = int.from_bytes(stage, "big")
+            for act, sid, n, game_id in PICKUP_SPOTS:
+                if sid == stage and flags[game_id]:
+                    found.add(ids[pickup_name(act, n)])
         new = (found - self.sent) & set(ctx.server_locations)
         if new:
             await ctx.send_msgs([{"cmd": "LocationChecks", "locations": sorted(new)}])

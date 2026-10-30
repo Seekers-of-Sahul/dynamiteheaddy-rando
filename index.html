@@ -583,7 +583,7 @@ def run(us, jp, opts_json, hub, hub_locked):
   try {
     py = await loadPyodide();
     for (const f of ["headdy_rando.py", "ap_hub_patch.py"]) {
-      const r = await fetch("randomizer/" + f);
+      const r = await fetch("randomizer/" + f, {cache: "no-cache"});   // always the latest version
       if (!r.ok) throw new Error("couldn't load " + f);
       py.FS.writeFile(f, await r.text());
     }

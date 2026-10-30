@@ -143,6 +143,14 @@ class EnemyDamage(Choice):
     default = 0
 
 
+class Pickupsanity(Toggle):
+    """
+    Every jelly bean, 500-point item and 1-up placed in the stages is a check (86 of them). Collect it to
+    send the check; it's still collected as usual. Head Hunter drops don't count.
+    """
+    display_name = "Pickupsanity"
+
+
 class TrapPercentage(Range):
     """How many of the filler items (extra lives, continues, health refills) are traps instead, in percent."""
     display_name = "Trap Percentage"
@@ -187,6 +195,7 @@ class HeaddyOptions(PerGameCommonOptions):
     enemy_damage: EnemyDamage
     pickup_shuffle: PickupShuffle
     new_pickups: NewPickups
+    pickupsanity: Pickupsanity
     trap_percentage: TrapPercentage
     mean_bean_trap_weight: MeanBeanTrapWeight
     head_trip_trap_weight: HeadTripTrapWeight
