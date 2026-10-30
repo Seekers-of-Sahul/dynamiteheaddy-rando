@@ -43,6 +43,8 @@ RAM used (unused by the game; this area survives soft resets):
   $FFFFFA.b  slot of the object that gave the last bonus point
   $FFFFFB.b  game ID of the last bonus point
   $FFFFFE.b  Archipelago DeathLink: the client sets it to 1 to make Headdy die
+  $FFFFE0.b  Archipelago trap: the client sets it (1 Mean Bean, 2 Head Trip), the hub
+             clears it once the trap has happened
 On first use every entry except 0-1 is unlocked (standalone play). 0-1 (the
 opening) is never selectable.
 An Archipelago client would overwrite it with the stages the player owns.
@@ -74,10 +76,18 @@ SECRET_BOSS, CONTINUE = 0x38, 0x3A     # secret boss stage (no lives lost there)
 BIT_9_3, BIT_SECRET = 29, 30           # bits in the cleared mask
 ITEMS_RECEIVED = 0xFFFC       # word: items the AP client has applied (survives soft reset)
 DEATH_REQ = 0xFFFE            # byte: set by the AP client to kill Headdy (DeathLink)
+TRAP_REQ = 0xFFE0             # byte: trap from the AP client (1 Mean Bean, 2 Head Trip)
 MODE_TABLE = 0x0004C2         # game mode handlers (long each, mode = offset)
 PLAY_MODE, PLAY_HANDLER = 0x20, 0x0144D8
 KILL = 0x010B0E               # the game's own "Headdy dies" routine (pits call it too)
+HEAD_RESET = 0x011366         # Headcase pickup, step 1: reset the head's settings
+HEAD_SETUP = 0x011312         # Headcase pickup, step 2: setup routine per head (long, head/8)
 NO_DEATH_STAGES = (0x08, 0x0A, 0x44)   # tutorial rooms and basketball: no dying there
+HEAD_TRIP = 0x1A0
+# A Head Trip trap waits while Headdy wears one of these: Ticker (time stop), Liberty
+# (basketball), Empty, Bomb (act 7 boss) and the flying heads; and in act 6 (flying).
+TRAP_WAIT_HEADS = (0x060, 0x0C0, 0x0E0, 0x120, 0x220, 0x240, 0x260)
+TRAP_WAIT_STAGES = NO_DEATH_STAGES + (0x50, 0x52, 0x54, 0x56)
 BB_DIGITS = 0xFFF8            # backup of the 4 secret digits, one nibble each ($F = unknown)
 E8F6 = 0xE8F6                 # bonus points taken in the current scene (game's own)
 E8AA, E8C4, E80A, E80B, E806, E8FE = 0xE8AA, 0xE8C4, 0xE80A, 0xE80B, 0xE806, 0xE8FE
@@ -175,6 +185,7 @@ def build(ap=False):
     a.w(0x31FC, 0xFFFF, BB_DIGITS)              # move.w #$FFFF,BB_DIGITS (no digits yet)
     a.w(0x4278, ITEMS_RECEIVED)                 # clr.w ITEMS_RECEIVED (client's counter)
     a.w(0x4238, DEATH_REQ)                      # clr.b DEATH_REQ
+    a.w(0x4238, TRAP_REQ)                       # clr.b TRAP_REQ
     a.w(0x31FC, 0x4150, MAGIC)                  # move.w #'AP',MAGIC
     a.label('ei_ok')
     a.w(0x4E75)                                 # rts
@@ -542,6 +553,65 @@ def build(ap=False):
         # asks for a DeathLink death, call the game's death routine, unless the game
         # is paused (wait), Headdy is already dying, or deaths can't happen here.
         a.label('dl_frame')
+        # Traps from the client. They wait while paused, while Headdy is dying, and
+        # where they can't happen safely.
+        a.w(0x4A38, TRAP_REQ)                   # tst.b TRAP_REQ
+        a.br(BEQ, 'dl_death')
+        a.w(0x4A78, 0xE806)                     # tst.w $E806 (paused)
+        a.br(BNE, 'dl_death')
+        a.w(0x0C78, 0x0008, 0xE600)             # cmpi.w #8,$E600 (dying)
+        a.br(BEQ, 'dl_death')
+        for st in NO_DEATH_STAGES:
+            a.w(0x0C78, st, E8AA)
+            a.br(BEQ, 'dl_death')
+        a.w(0x0C38, 0x0001, TRAP_REQ)           # cmpi.b #1,TRAP_REQ
+        a.br(BNE, 'tr_trip')
+        # Mean Bean: lose 16 health (never below 2: health stays even), with the hit sound
+        a.w(0x0478, 0x0010, 0xD200)             # subi.w #$10,$D200
+        a.w(0x6E06)                             # bgt.s +6
+        a.w(0x31FC, 0x0002, 0xD200)             # move.w #2,$D200
+        a.w(0x48E7, 0xFFFE)                     # movem.l d0-d7/a0-a6,-(sp)
+        a.w(0x103C, 0x0021)                     # move.b #$21,d0
+        a.w(0x4EB9); a.l(SOUND)
+        a.w(0x4CDF, 0x7FFF)
+        a.br(BRA, 'tr_done')
+        # Head Trip: put it on, as a Headcase would (only when Headdy stands, walks or
+        # jumps with his head on, and not while he wears a head that has to stay)
+        a.label('tr_trip')
+        for st in TRAP_WAIT_STAGES[len(NO_DEATH_STAGES):]:
+            a.w(0x0C78, st, E8AA)
+            a.br(BEQ, 'dl_death')
+        a.w(0x0C78, HEAD_TRIP, 0xEE0A)          # already wearing it: start its time again
+        a.br(BNE, 'tr_new')
+        a.w(0x31FC, 0x0400, 0xE8D8)             # move.w #$400,$E8D8
+        a.br(BRA, 'tr_done')
+        a.label('tr_new')
+        for h in TRAP_WAIT_HEADS:
+            a.w(0x0C78, h, 0xEE0A)
+            a.br(BEQ, 'dl_death')
+        a.w(0x4A78, 0xEE82)                     # tst.w $EE82 (time stopped)
+        a.br(BNE, 'dl_death')
+        a.w(0x4A78, 0xD106)                     # tst.w $D106 (head attached)
+        a.br(BNE, 'dl_death')
+        a.w(0x3038, 0xD102)                     # move.w $D102,d0
+        a.w(0x0C40, 0x0008)                     # cmpi.w #8,d0 (stand 0, walk 4, air 8)
+        a.br(0x6200, 'dl_death')                # bhi
+        a.w(0x48E7, 0xFFFE)                     # movem.l d0-d7/a0-a6,-(sp)
+        a.w(0x4EB9); a.l(HEAD_RESET)            # jsr $011366 (what a Headcase does first)
+        a.w(0x3238, 0xEE0A)                     # move.w $EE0A,d1 (old head)
+        a.w(0x31FC, HEAD_TRIP, 0xEE0A)          # move.w #$1A0,$EE0A
+        a.w(0x2079); a.l(HEAD_SETUP + (HEAD_TRIP >> 3))   # movea.l (setup table + $34),a0
+        a.w(0x4E90)                             # jsr (a0)
+        a.w(0x31FC, 0x000A, 0xD106)             # move.w #$A,$D106 (head arriving)
+        a.w(0x103C, 0x0023)                     # move.b #$23,d0 (Headcase sound)
+        a.w(0x4EB9); a.l(SOUND)
+        a.w(0x3038, 0xEE0C)                     # move.w $EE0C,d0
+        a.w(0x4EB9); a.l(0x0194EA)              # head colours
+        a.w(0x4EB9); a.l(0x0194B8)              # head object
+        a.w(0x4CDF, 0x7FFF)
+        a.label('tr_done')
+        a.w(0x4238, TRAP_REQ)                   # clr.b TRAP_REQ
+        a.label('dl_death')
         a.w(0x4A38, DEATH_REQ)                  # tst.b DEATH_REQ
         a.br(BEQ, 'dl_play')
         a.w(0x4A78, 0xE806)                     # tst.w $E806 (paused)

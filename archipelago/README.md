@@ -6,7 +6,7 @@ Requires Archipelago 0.6.8 or newer and BizHawk 2.10 or newer (tested with 2.11.
 
 - You start with one stage unlocked (1-1 by default). Every other stage is an item.
 - **Checks:** each act clear, each of the 39 Secret Bonus Points, the 4 basketball wins and the secret boss.
-- **Items:** stage unlocks, the 4 secret code digits, and filler (Extra Life, Continue, Health Refill).
+- **Items:** stage unlocks, the 4 secret code digits, and filler (Extra Life, Continue, Health Refill), and traps if `trap_percentage` is above 0 (Mean Bean Trap: lose 16 health, never below 2; Head Trip Trap: Head Trip goes on for its usual time).
 - **Goal** (pick one): beat the secret boss behind the door after the credits, beat 9-3, or collect a number of Secret Bonus Points and beat 9-3.
 - Basketball wins no longer give code digits; the digits come from the multiworld instead.
 - After a hard reset or closing the emulator, the client restores your bonus points, act clears and basketball progress from the server.

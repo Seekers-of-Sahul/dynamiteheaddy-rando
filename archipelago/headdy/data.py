@@ -80,6 +80,7 @@ RAM_HEALTH = 0xD200         # word, $20 = full
 RAM_MODE = 0xE802           # word, $20 = playing
 RAM_STAGE = 0xE8AA          # word
 RAM_HEADDY_STATE = 0xE600   # word: Headdy's routine; 8 = dying
+RAM_TRAP = 0xFFE0           # byte: trap for the hub patch (1 Mean Bean, 2 Head Trip); it clears it
 RAM_DEATH_REQ = 0xFFFE      # byte: set to 1 to make Headdy die (DeathLink, hub patch)
 DYING = 8
 

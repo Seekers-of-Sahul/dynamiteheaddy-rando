@@ -24,6 +24,10 @@ number of Secret Bonus Points and beat 9-3.
 - Stage unlocks for every act
 - Secret Code Digits 1-4 (basketball wins no longer give digits)
 - Extra lives, continues and health refills
+- Traps, if `trap_percentage` is above 0: **Mean Bean Trap** (lose 16 health, never below 2) and
+  **Head Trip Trap** (Head Trip goes on your head for its usual time). Traps wait while the game is
+  paused, while you're dying, and in the stage select, tutorial rooms and basketball; a Head Trip Trap
+  also waits in act 6 and while you wear Ticker, Liberty Head, Bomb or a flying head.
 
 ## Does it support DeathLink?
 

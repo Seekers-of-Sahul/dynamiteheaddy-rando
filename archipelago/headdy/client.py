@@ -6,6 +6,8 @@ checked locations, and writes what the multiworld has given the player:
   - code digits   -> the game's digit cells and the hub's reset-proof backup
   - filler        -> applied once each, counted at $FFFFFC so a soft reset or
                      reconnect doesn't hand them out twice
+  - traps         -> one at a time through $FFFFE0; the hub patch makes them happen
+                     and clears it
 DeathLink: Headdy's routine ($FFE600) turning to 8 means he died; a death from
 another player sets $FFFFFE, and the hub patch calls the game's death routine.
 """
@@ -19,7 +21,7 @@ from NetUtils import ClientStatus
 from worlds._bizhawk import read, write
 from worlds._bizhawk.client import BizHawkClient
 
-from .data import (BONUS_POINTS, DYING, GAME, RAM_BB_STAGES, RAM_BONUS, RAM_CLEARED, RAM_CONTINUES, RAM_DEATH_REQ,
+from .data import (BONUS_POINTS, DYING, GAME, RAM_BB_STAGES, RAM_BONUS, RAM_CLEARED, RAM_CONTINUES, RAM_DEATH_REQ, RAM_TRAP,
                    RAM_DIGITS_BACKUP, RAM_HEADDY_STATE,
                    RAM_GAME_DIGITS, RAM_HEALTH, RAM_HUB_BLOCK, RAM_HUBFLAG, RAM_ITEMS, RAM_LIVES, RAM_MAGIC, RAM_MODE,
                    RAM_UNLOCK, ROM_MARKER, ROM_MARKER_ADDR, ROM_NAME_ADDR, SECRET_BOSS_BIT, STAGES)
@@ -161,7 +163,7 @@ class HeaddyClient(BizHawkClient):
         def u32(a: int) -> int:
             return int.from_bytes(hub[a - RAM_HUB_BLOCK:a - RAM_HUB_BLOCK + 4], "big")
 
-        from .items import DIGITS, item_name_to_id, unlock_name
+        from .items import DIGITS, TRAPS, item_name_to_id, unlock_name
         id_to_name = {v: k for k, v in item_name_to_id.items()}
         from .locations import BASKETBALL_WINS, SECRET_BOSS, clear_name
 
@@ -251,17 +253,30 @@ class HeaddyClient(BizHawkClient):
         if mode == MODE_PLAYING and applied < len(names):
             lives, conts, health = await self.read_ram(ctx, [(RAM_LIVES, 2), (RAM_CONTINUES, 2), (RAM_HEALTH, 2)])
             lives, conts, health = (int.from_bytes(x, "big") for x in (lives, conts, health))
+            lives0, conts0, health0 = lives, conts, health
+            trap_free = not u8(RAM_TRAP)
+            done = applied
             for name in names[applied:]:
-                if name == "Extra Life":
+                if name in TRAPS:
+                    # one trap at a time: the hub patch clears the byte once it has happened
+                    # (it waits while paused, dying, or where the trap can't happen)
+                    if not trap_free:
+                        break
+                    writes.append(self.ram_write(RAM_TRAP, bytes([TRAPS[name], u8(RAM_TRAP + 1)])))
+                    trap_free = False
+                elif name == "Extra Life":
                     lives = min(99, lives + 1)
                 elif name == "Continue":
                     conts = min(9, conts + 1)
                 elif name == "Health Refill":
                     health = 0x20
-            writes += [self.ram_write(RAM_LIVES, lives.to_bytes(2, "big")),
-                       self.ram_write(RAM_CONTINUES, conts.to_bytes(2, "big")),
-                       self.ram_write(RAM_HEALTH, health.to_bytes(2, "big")),
-                       self.ram_write(RAM_ITEMS, len(names).to_bytes(2, "big"))]
+                done += 1
+            # only what changed: the game may have changed the rest since we read it
+            for addr, old, new in ((RAM_LIVES, lives0, lives), (RAM_CONTINUES, conts0, conts),
+                                   (RAM_HEALTH, health0, health)):
+                if new != old:
+                    writes.append(self.ram_write(addr, new.to_bytes(2, "big")))
+            writes.append(self.ram_write(RAM_ITEMS, done.to_bytes(2, "big")))
         if restored or new_backup != backup:
             # The stage select drew its "nn OF 39 SBPS" / code lines before we got here:
             # ask the hub to redraw them (REDRAW = 3: stage number, SBP line, code line).

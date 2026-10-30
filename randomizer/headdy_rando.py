@@ -183,29 +183,7 @@ STAGE_TABLE, HEADCASE_TYPE = 0x059C4A, 0x018
 
 def find_headcases(rom):
     """[(stage, x, entry_addr)] for every type-$018 placement entry."""
-    ptrs = sorted({l32(rom, STAGE_TABLE + s * 2) for s in range(0, 0x80, 2)
-                   if 0x60000 <= l32(rom, STAGE_TABLE + s * 2) < 0x200000})
-    found, seen = [], set()
-    for s in range(0, 0x80, 2):
-        p = l32(rom, STAGE_TABLE + s * 2)
-        if not 0x60000 <= p < 0x200000:
-            continue
-        nxt = [t for t in ptrs if t > p]
-        lim = nxt[0] if nxt else p + 1024
-        a, col = p, 0
-        while a < lim:
-            q = l32(rom, a)
-            if not 0x60000 <= q < 0x200000:
-                break
-            e = q
-            while rom[e] != 0 and e < q + 8 * 400:
-                if w16(rom, e + 6) == HEADCASE_TYPE and e not in seen:
-                    seen.add(e)
-                    found.append((s, col * 256 + rom[e], e))
-                e += 8
-            a += 4
-            col += 1
-    return found
+    return find_placements(rom, (HEADCASE_TYPE,))
 
 
 def read_set(rom, k):
@@ -666,6 +644,13 @@ def randomize_stats(rom, rng, o):
 BEAN, POINTS, ONE_UP = 0x128, 0x184, 0x01C
 PICKUPS = (BEAN, POINTS, ONE_UP)
 PICKUP_NAMES = {BEAN: 'jelly bean', POINTS: '500 points', ONE_UP: '1-up'}
+# 3-1's pickups float on the water: their own types, which bob, then run the usual code
+# ($0207E2, $020846, $020726). A floating spot keeps floating whatever it becomes.
+FLOATING = {BEAN: 0x2EC, POINTS: 0x2F0, ONE_UP: 0x2F4}
+UNFLOAT = {v: k for k, v in FLOATING.items()}
+ALL_PICKUPS = PICKUPS + tuple(FLOATING.values())
+# Object lists the stage table doesn't point to: 6-3's second half ($00FA5E switches to it).
+EXTRA_LISTS = {0x54: (0x0CD376, 64)}
 
 
 def find_placements(rom, types):
@@ -678,20 +663,24 @@ def find_placements(rom, types):
         if not 0x60000 <= p < 0x200000:
             continue
         nxt = [t for t in ptrs if t > p]
-        lim = nxt[0] if nxt else p + 1024
-        a, col = p, 0
-        while a < lim:
-            q = l32(rom, a)
-            if not 0x60000 <= q < 0x200000:
-                break
-            e = q
-            while rom[e] != 0 and e < q + 8 * 400:
-                if w16(rom, e + 6) in types and e not in seen:
-                    seen.add(e)
-                    found.append((s, col * 256 + rom[e], e))
-                e += 8
-            a += 4
-            col += 1
+        lists = [(p, nxt[0] if nxt else p + 1024)]
+        if s in EXTRA_LISTS:
+            ep, ncols = EXTRA_LISTS[s]
+            lists.append((ep, ep + 4 * ncols))
+        for p, lim in lists:
+            a, col = p, 0
+            while a < lim:
+                q = l32(rom, a)
+                if not 0x60000 <= q < 0x200000:
+                    break
+                e = q
+                while rom[e] != 0 and e < q + 8 * 400:
+                    if w16(rom, e + 6) in types and e not in seen:
+                        seen.add(e)
+                        found.append((s, col * 256 + rom[e], e))
+                    e += 8
+                a += 4
+                col += 1
     return found
 
 
@@ -699,15 +688,15 @@ PICKUP_WEIGHTS = {BEAN: 45, POINTS: 45, ONE_UP: 10}
 
 
 def shuffle_pickups(rom, rng, mode='shuffle'):
-    spots = [(s, x, e) for s, x, e in find_placements(rom, PICKUPS) if rom[e + 5] == 0]
-    points_stages = {s for s, x, e in spots if w16(rom, e + 6) == POINTS}
+    spots = [(s, x, e) for s, x, e in find_placements(rom, ALL_PICKUPS) if rom[e + 5] == 0]
+    points_stages = {s for s, x, e in spots if UNFLOAT.get(w16(rom, e + 6), w16(rom, e + 6)) == POINTS}
     if mode == 'random':
         types = []
         for s, x, e in spots:
             allowed = {t: w for t, w in PICKUP_WEIGHTS.items() if t != POINTS or s in points_stages}
             types.append(rng.choices(list(allowed), weights=list(allowed.values()))[0])
         return _write_pickups(rom, spots, types, '== Pickups randomized')
-    types = [w16(rom, e + 6) for s, x, e in spots]
+    types = [UNFLOAT.get(w16(rom, e + 6), w16(rom, e + 6)) for s, x, e in spots]
     rng.shuffle(types)
     # a 500-point item outside its stages swaps with something else inside them
     for i, (s, x, e) in enumerate(spots):
@@ -724,10 +713,12 @@ def _write_pickups(rom, spots, types, title):
     log = [title + ': %d jelly beans, %d 500-point items, %d 1-ups' % (
         count[BEAN], count[POINTS], count[ONE_UP])]
     for (s, x, e), t in zip(spots, types):
-        if w16(rom, e + 6) != t:
+        old = w16(rom, e + 6)
+        base = UNFLOAT.get(old, old)
+        if base != t:
             log.append('%-6s X=%-5d %-10s -> %s' % (STAGE_NAMES.get(s, '$%02X' % s), x,
-                                                   PICKUP_NAMES[w16(rom, e + 6)], PICKUP_NAMES[t]))
-        put16(rom, e + 6, t)
+                                                   PICKUP_NAMES[base], PICKUP_NAMES[t]))
+        put16(rom, e + 6, FLOATING[t] if old in UNFLOAT else t)
     return log
 
 
@@ -1017,7 +1008,7 @@ def patch_new_pickups(rom):
 # $E800, last drop's frame kept in $FFFFFF): some enemies award score more than once.
 HEAD_HUNTER = 0x180
 HH_FIX = 0x1D6280
-POINT_STAGES = (0x02, 0x04, 0x16, 0x18, 0x22, 0x26, 0x2C)   # the stages with 500-point art
+POINT_STAGES = (0x02, 0x04, 0x10, 0x16, 0x18, 0x22, 0x26, 0x2C)   # the stages with 500-point art
 SCORE = 0x010FEC
 SPAWN = 0x0009A8
 RANDOM = 0x05AD3C             # returns a random byte in d0 (only touches d0)
@@ -1068,7 +1059,7 @@ def patch_head_hunter(rom):
     word(0x66, 'done')
     c += bytes.fromhex('0c2c00400aa7')     # cmpi.b #$40,$AA7(a4)   (starting HP: boss?)
     word(0x64, 'done')
-    for t in PICKUPS:                      # collecting a pickup also awards score
+    for t in ALL_PICKUPS:                  # collecting a pickup also awards score
         c += struct.pack('>HH', 0xB8FC, t) # cmpa.w #t,a4
         word(0x67, 'done')
     c += bytes.fromhex('48e7e0d2')         # movem.l d0-d2/a0-a1/a3/a6,-(sp)

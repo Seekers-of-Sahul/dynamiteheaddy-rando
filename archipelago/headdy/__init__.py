@@ -7,7 +7,7 @@ from worlds.AutoWorld import WebWorld, World
 
 from .client import HeaddyClient  # noqa: F401  (registers the BizHawk client)
 from .data import BASKETBALL_STAGES, BONUS_POINTS, GAME, STAGES
-from .items import DIGITS, FILLER, HeaddyItem, item_name_groups, item_name_to_id, item_table, unlock_name
+from .items import DIGITS, FILLER, TRAPS, HeaddyItem, item_name_groups, item_name_to_id, item_table, unlock_name
 from .locations import (BASKETBALL_WINS, SECRET_BOSS, HeaddyLocation, clear_name, location_name_groups,
                         location_name_to_id, location_table)
 from .options import Goal, HeaddyOptions
@@ -120,6 +120,13 @@ class HeaddyWorld(World):
     def get_filler_item_name(self) -> str:
         return self.random.choices(list(FILLER), weights=list(FILLER.values()))[0]
 
+    def filler_or_trap(self) -> str:
+        weights = {"Mean Bean Trap": self.options.mean_bean_trap_weight.value,
+                   "Head Trip Trap": self.options.head_trip_trap_weight.value}
+        if sum(weights.values()) and self.random.random() * 100 < self.options.trap_percentage.value:
+            return self.random.choices(list(weights), weights=list(weights.values()))[0]
+        return self.get_filler_item_name()
+
     def create_items(self) -> None:
         start = unlock_name(self.starting_stage)
         self.multiworld.push_precollected(self.create_item(start))
@@ -127,7 +134,7 @@ class HeaddyWorld(World):
         pool += [self.create_item(d) for d in DIGITS]
         n_locations = len(location_table)
         while len(pool) < n_locations:
-            pool.append(self.create_item(self.get_filler_item_name()))
+            pool.append(self.create_item(self.filler_or_trap()))
         self.multiworld.itempool += pool
 
     # ------------------------------------------------------------------ output

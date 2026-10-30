@@ -24,6 +24,10 @@ FILLER = {
     "Continue": 1,
     "Health Refill": 3,
 }
+TRAPS = {                      # name: value for the hub patch's trap byte ($FFFFE0)
+    "Mean Bean Trap": 1,       # lose 16 health (never below 2)
+    "Head Trip Trap": 2,       # Head Trip goes on for its usual time
+}
 
 item_table: dict[str, ItemData] = {}
 for bit, stage, _ in STAGES:
@@ -32,9 +36,12 @@ for i, name in enumerate(DIGITS):
     item_table[name] = ItemData(BASE_ID + 0x40 + i, ItemClassification.progression)
 for i, name in enumerate(FILLER):
     item_table[name] = ItemData(BASE_ID + 0x80 + i, ItemClassification.filler)
+for i, name in enumerate(TRAPS):
+    item_table[name] = ItemData(BASE_ID + 0xC0 + i, ItemClassification.trap)
 
 item_name_to_id = {name: data.code for name, data in item_table.items()}
 item_name_groups = {
     "Unlocks": {unlock_name(s) for _, s, _ in STAGES},
     "Code Digits": set(DIGITS),
+    "Traps": set(TRAPS),
 }

@@ -228,6 +228,27 @@ Dynamite Headdy:
     'false': 50
     'true': 0
 
+  trap_percentage:
+    # How many of the filler items (extra lives, continues, health refills) are traps instead, in percent.
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 100
+    0: 50
+    random: 0
+
+  mean_bean_trap_weight:
+    # How likely a trap is a Mean Bean Trap: you lose 16 health (half the maximum), but never go below 2.
+    # Minimum value is 0
+    # Maximum value is 10
+    1: 50
+
+  head_trip_trap_weight:
+    # How likely a trap is a Head Trip Trap: Head Trip goes on your head for its usual time.
+    # It waits while you wear a head you need (Ticker, Liberty Head, Bomb, flying heads) and in act 6.
+    # Minimum value is 0
+    # Maximum value is 10
+    1: 50
+
   death_link:
     # When you die, everyone else with DeathLink on dies too, and vice versa.
     # Deaths that arrive in the stage select, the tutorial rooms or basketball are ignored.

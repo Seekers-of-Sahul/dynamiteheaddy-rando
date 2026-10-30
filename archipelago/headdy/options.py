@@ -143,6 +143,33 @@ class EnemyDamage(Choice):
     default = 0
 
 
+class TrapPercentage(Range):
+    """How many of the filler items (extra lives, continues, health refills) are traps instead, in percent."""
+    display_name = "Trap Percentage"
+    range_start = 0
+    range_end = 100
+    default = 0
+
+
+class MeanBeanTrapWeight(Range):
+    """How likely a trap is a Mean Bean Trap: you lose 16 health (half the maximum), but never go below 2."""
+    display_name = "Mean Bean Trap Weight"
+    range_start = 0
+    range_end = 10
+    default = 1
+
+
+class HeadTripTrapWeight(Range):
+    """
+    How likely a trap is a Head Trip Trap: Head Trip goes on your head for its usual time. It waits while you
+    wear a head you need (Ticker, Liberty Head, Bomb, flying heads) and in act 6.
+    """
+    display_name = "Head Trip Trap Weight"
+    range_start = 0
+    range_end = 10
+    default = 1
+
+
 @dataclass
 class HeaddyOptions(PerGameCommonOptions):
     goal: Goal
@@ -160,4 +187,7 @@ class HeaddyOptions(PerGameCommonOptions):
     enemy_damage: EnemyDamage
     pickup_shuffle: PickupShuffle
     new_pickups: NewPickups
+    trap_percentage: TrapPercentage
+    mean_bean_trap_weight: MeanBeanTrapWeight
+    head_trip_trap_weight: HeadTripTrapWeight
     death_link: DeathLink

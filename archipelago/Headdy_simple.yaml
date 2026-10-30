@@ -22,4 +22,7 @@ Dynamite Headdy:
   enemy_damage: vanilla        # vanilla / shuffled / half / double
   pickup_shuffle: off          # off / shuffle / randomized
   new_pickups: false           # some beans become upside-down beans (take half your health) or powerup beans
+  trap_percentage: 0           # % of filler items that are traps (Mean Bean, Head Trip)
+  mean_bean_trap_weight: 1     # Mean Bean Trap: lose 16 health (never below 2)
+  head_trip_trap_weight: 1     # Head Trip Trap: Head Trip goes on for its usual time
   death_link: false            # die when another DeathLink player dies, and vice versa
