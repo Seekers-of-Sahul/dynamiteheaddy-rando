@@ -65,9 +65,35 @@ class FlyingHeads(Toggle):
     display_name = "Flying Heads"
 
 
+class HeadHunter(Toggle):
+    """
+    Add Head Hunter (an unused head) to shuffled Headcases. It attacks like the normal head, and
+    defeated enemies sometimes drop a pickup while you wear it (never bosses).
+    """
+    display_name = "Head Hunter"
+
+
 class BossBomb(DefaultOnToggle):
     """Keep Bomb Head available at the act 7 boss."""
     display_name = "Act 7 Boss Bomb Head"
+
+
+class PickupShuffle(Choice):
+    """
+    off: vanilla pickups. shuffle: jelly beans, 500-point items and 1-ups swap places.
+    randomized: every spot gets a random pickup (45% bean, 45% 500 points, 10% 1-up).
+    500-point items only appear in stages that have them.
+    """
+    display_name = "Pickup Shuffle"
+    option_off = 0
+    option_shuffle = 1
+    option_randomized = 2
+    default = 0
+
+
+class NewPickups(Toggle):
+    """Turn some jelly beans into new pickups. Upside-down bean: takes half your health (never below 1)."""
+    display_name = "New Pickups"
 
 
 class JPBalance(Toggle):
@@ -122,9 +148,12 @@ class HeaddyOptions(PerGameCommonOptions):
     head_trip: HeadTrip
     flying_heads: FlyingHeads
     boss_bomb: BossBomb
+    head_hunter: HeadHunter
     jp_balance: JPBalance
     jp_palettes: JPPalettes
     palettes: Palettes
     palette_sprites: PaletteSprites
     enemy_damage: EnemyDamage
+    pickup_shuffle: PickupShuffle
+    new_pickups: NewPickups
     death_link: DeathLink

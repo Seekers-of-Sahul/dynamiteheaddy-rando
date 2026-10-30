@@ -139,6 +139,12 @@ Dynamite Headdy:
     'false': 50
     'true': 0
 
+  head_hunter:
+    # Add Head Hunter (an unused head) to shuffled Headcases. It attacks like the normal head, and
+    # defeated enemies sometimes drop a pickup while you wear it (never bosses).
+    'false': 50
+    'true': 0
+
   boss_bomb:
     # Keep Bomb Head available at the act 7 boss.
     'false': 0
@@ -206,6 +212,19 @@ Dynamite Headdy:
   priority_locations:
     # Prevent these locations from having an unimportant item.
     []
+
+  pickup_shuffle:
+    # off: vanilla pickups. shuffle: jelly beans, 500-point items and 1-ups swap places.
+    # randomized: every spot gets a random pickup (45% bean, 45% 500 points, 10% 1-up).
+    # 500-point items only appear in stages that have them.
+    off: 50
+    shuffle: 0
+    randomized: 0
+
+  new_pickups:
+    # Turn some jelly beans into new pickups. Upside-down bean: takes half your health (never below 1).
+    'false': 50
+    'true': 0
 
   death_link:
     # When you die, everyone else with DeathLink on dies too, and vice versa.

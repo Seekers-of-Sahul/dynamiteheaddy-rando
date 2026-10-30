@@ -264,6 +264,11 @@ select { max-width: 56vw; }
         <div class="desc">Rocket, Air and Feather Head outside act 6. Press A to drop them. Outside act 6 their shots are drawn as stars and fireballs.</div>
       </div>
       <div class="row sub hc">
+        <label for="head_hunter">Allow Head Hunter</label>
+        <span class="switch"><input type="checkbox" id="head_hunter"></span>
+        <div class="desc">An unused head with goggles and a headset. It attacks like the normal head, and defeated enemies sometimes drop a pickup: a jelly bean, a 500-point item or a 1-up (never bosses).</div>
+      </div>
+      <div class="row sub hc">
         <label for="boss_bomb">Bomb Head at the act 7 boss</label>
         <span class="switch"><input type="checkbox" id="boss_bomb"></span>
         <div class="desc">Keep Bomb Head available for that fight.</div>
@@ -322,6 +327,24 @@ select { max-width: 56vw; }
     </fieldset>
 
     <fieldset>
+      <legend>Pickups</legend>
+      <div class="row">
+        <label for="pickups">Pickup shuffle</label>
+        <select id="pickups">
+          <option value="off">Off</option>
+          <option value="shuffle">Shuffle</option>
+          <option value="random">Random</option>
+        </select>
+        <div class="desc">Shuffle: jelly beans, 500-point items and 1-ups swap places. Random: every spot gets a random pickup (45% bean, 45% 500 points, 10% 1-up). 500-point items only appear in stages that have them.</div>
+      </div>
+      <div class="row">
+        <label for="new_pickups">New pickups</label>
+        <span class="switch"><input type="checkbox" id="new_pickups"></span>
+        <div class="desc">Some jelly beans become new pickups. Upside-down bean: takes half your health (never below 1).</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
       <legend>Extras</legend>
       <div class="row">
         <label for="hub">Stage-select hub</label>
@@ -367,12 +390,12 @@ select { max-width: 56vw; }
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-const BOOLS = ["bonus_logic", "headtrip", "flying_heads", "boss_bomb",
-               "palette_sprites", "jp_palettes", "jp_balance", "hub", "hub_locked"];
-const SELECTS = ["headcases", "palettes", "enemy_damage"];
-const DEFAULTS = {headcases: "safe", bonus_logic: true, headtrip: true, flying_heads: false,
+const BOOLS = ["bonus_logic", "headtrip", "flying_heads", "head_hunter", "boss_bomb",
+               "palette_sprites", "jp_palettes", "jp_balance", "hub", "hub_locked", "new_pickups"];
+const SELECTS = ["headcases", "palettes", "enemy_damage", "pickups"];
+const DEFAULTS = {headcases: "safe", bonus_logic: true, headtrip: true, flying_heads: false, head_hunter: false,
   boss_bomb: true, palettes: "off", palette_sprites: false, jp_palettes: false,
-  enemy_damage: "off", jp_balance: false, hub: false, hub_locked: false};
+  enemy_damage: "off", jp_balance: false, hub: false, hub_locked: false, pickups: "off", new_pickups: false};
 const PRESETS = {
   standard: {},
   casual: {palettes: "safe", jp_balance: true, jp_palettes: true, headtrip: false},

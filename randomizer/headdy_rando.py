@@ -55,6 +55,18 @@ OPTIONS = {
                       'desc': 'Allow Rocket, Air and Feather Head in normal Headcases. They '
                               'time out like other heads and A drops them. Outside act 6 their '
                               'shots are drawn as stars and fireballs.'},
+    'head_hunter':   {'default': False, 'type': 'bool',
+                      'desc': 'Add Head Hunter (an unused head) to the Headcase shuffle: it '
+                              'attacks like the normal head, and defeated enemies sometimes '
+                              'drop a pickup (never bosses).'},
+    'pickups':       {'default': 'off', 'choices': ['off', 'shuffle', 'random'],
+                      'desc': 'shuffle: jelly beans, 500-point items and 1-ups swap spots. '
+                              'random: every spot gets a random pickup (45% bean, 45% 500 '
+                              'points, 10% 1-up). 500-point items only appear in stages that '
+                              'have them.'},
+    'new_pickups':   {'default': False, 'type': 'bool',
+                      'desc': 'Turn some jelly beans into new pickups. Upside-down bean: '
+                              'takes half your health (never below 1).'},
     'jp_balance':    {'default': False, 'type': 'bool',
                       'desc': 'Japanese difficulty: 2 starting continues, a continue every '
                               '10 tokens, JP enemy damage/HP, JP 1-1 boss, Stair Wars, act 7, '
@@ -122,7 +134,7 @@ STAGE_NAMES.update({0x3C: 'opening', 0x08: 'Headcase tutorial'})
 NAMES = {
     0x020: 'Slammer', 0x040: 'Super', 0x060: 'Ticker', 0x080: 'Spike',
     0x0A0: 'War', 0x0C0: 'Liberty', 0x0E0: 'Empty', 0x100: 'Pin',
-    0x120: 'Bomb', 0x140: 'Vacuum', 0x160: 'Pig', 0x1A0: 'Head Trip',
+    0x120: 'Bomb', 0x140: 'Vacuum', 0x160: 'Pig', 0x180: 'Head Hunter', 0x1A0: 'Head Trip',
     0x1C0: 'Sleepy', 0x1E0: 'Lotsa', 0x200: 'Protector', 0x220: 'Rocket',
     0x240: 'Air', 0x260: 'Feather',
 }
@@ -329,6 +341,8 @@ def randomize_headcases(rom, rng, o):
     pool = [h for h in POOL if o['headtrip'] or h != 0x1A0]
     if o['flying_heads']:
         pool += FLYING
+    if o['head_hunter']:
+        pool += [HEAD_HUNTER]
     users = {}
     for st, x, e in find_headcases(rom):
         k = rom[e + 5] & 0x7F
@@ -570,7 +584,7 @@ def randomize_palettes(rom, rng, o):
                            '21fcc0000080b6c030b8b6c030b8b6c2')
     if bytes(rom[PAL_HOOK:PAL_HOOK_END]) != expect:
         raise ValueError('palette DMA at $%06X is not the original code' % PAL_HOOK)
-    claim(rom, PAL_CODE, 0x500, 'palette code')
+    claim(rom, PAL_CODE, 0x200, 'palette code')     # code + table end at $0CDCFF
     for b in LUT_BLOCKS:
         claim(rom, b, 0x1000, 'palette tables')
     make = {'safe': lut_safe, 'hue': lut_hue, 'chaos': lut_chaos}[o['palettes']]
@@ -638,6 +652,311 @@ def randomize_stats(rom, rng, o):
                     log.append('type $%03X  %d -> %d' % (t, d, n))
         log.append('%d object types changed' % changed)
         patch_odd_health(rom)
+    return log
+
+
+# ---------------------------------------------------------------- pickups
+# Pickups are placement entries like everything else: byte 4 is the entry's saved
+# ID (collected pickups stay collected), byte 5 a parameter, bytes 6-7 the type.
+# Jelly beans and 1-ups are drawn from shared art every stage loads; the 500-point
+# item's tiles ($5F8) are stage-specific, so it only moves between stages that
+# already have one.
+BEAN, POINTS, ONE_UP = 0x128, 0x184, 0x01C
+PICKUPS = (BEAN, POINTS, ONE_UP)
+PICKUP_NAMES = {BEAN: 'jelly bean', POINTS: '500 points', ONE_UP: '1-up'}
+
+
+def find_placements(rom, types):
+    """[(stage, x, entry_addr)] for every placement entry of the given types."""
+    ptrs = sorted({l32(rom, STAGE_TABLE + s * 2) for s in range(0, 0x80, 2)
+                   if 0x60000 <= l32(rom, STAGE_TABLE + s * 2) < 0x200000})
+    found, seen = [], set()
+    for s in range(0, 0x80, 2):
+        p = l32(rom, STAGE_TABLE + s * 2)
+        if not 0x60000 <= p < 0x200000:
+            continue
+        nxt = [t for t in ptrs if t > p]
+        lim = nxt[0] if nxt else p + 1024
+        a, col = p, 0
+        while a < lim:
+            q = l32(rom, a)
+            if not 0x60000 <= q < 0x200000:
+                break
+            e = q
+            while rom[e] != 0 and e < q + 8 * 400:
+                if w16(rom, e + 6) in types and e not in seen:
+                    seen.add(e)
+                    found.append((s, col * 256 + rom[e], e))
+                e += 8
+            a += 4
+            col += 1
+    return found
+
+
+PICKUP_WEIGHTS = {BEAN: 45, POINTS: 45, ONE_UP: 10}
+
+
+def shuffle_pickups(rom, rng, mode='shuffle'):
+    spots = [(s, x, e) for s, x, e in find_placements(rom, PICKUPS) if rom[e + 5] == 0]
+    points_stages = {s for s, x, e in spots if w16(rom, e + 6) == POINTS}
+    if mode == 'random':
+        types = []
+        for s, x, e in spots:
+            allowed = {t: w for t, w in PICKUP_WEIGHTS.items() if t != POINTS or s in points_stages}
+            types.append(rng.choices(list(allowed), weights=list(allowed.values()))[0])
+        return _write_pickups(rom, spots, types, '== Pickups randomized')
+    types = [w16(rom, e + 6) for s, x, e in spots]
+    rng.shuffle(types)
+    # a 500-point item outside its stages swaps with something else inside them
+    for i, (s, x, e) in enumerate(spots):
+        if types[i] == POINTS and s not in points_stages:
+            j = rng.choice([j for j, (s2, x2, e2) in enumerate(spots)
+                            if s2 in points_stages and types[j] != POINTS])
+            types[i], types[j] = types[j], types[i]
+    return _write_pickups(rom, spots, types, '== Pickups shuffled')
+
+
+def _write_pickups(rom, spots, types, title):
+    from collections import Counter
+    count = Counter(types)
+    log = [title + ': %d jelly beans, %d 500-point items, %d 1-ups' % (
+        count[BEAN], count[POINTS], count[ONE_UP])]
+    for (s, x, e), t in zip(spots, types):
+        if w16(rom, e + 6) != t:
+            log.append('%-6s X=%-5d %-10s -> %s' % (STAGE_NAMES.get(s, '$%02X' % s), x,
+                                                   PICKUP_NAMES[w16(rom, e + 6)], PICKUP_NAMES[t]))
+        put16(rom, e + 6, t)
+    return log
+
+
+# New pickups: jelly beans whose placement parameter has bit 6 set (bit 7 is masked off by the spawner). The bean's code
+# never reads the parameter (the object keeps it at $D303 + slot). Their look comes
+# from new animation scripts drawing shared art; their effect replaces the bean's.
+#   upside-down bean: takes 16 health (half the maximum), never below 1
+NEW_PICKUPS = 0x1D6200
+BEAN_HANDLER, BEAN_COLLECT, BEAN_COLLECT_REST = 0x0207FA, 0x02081A, 0x020820
+BEAN_SCRIPTS = (0x1A888A, 0x1A888E)       # the bean's animation script (both steps)
+BEAN_PIECE = 0x1A8892                     # its sprite piece: 2x2 tiles at $3A4
+VARIANT = 0x40
+
+
+def patch_new_pickups(rom):
+    claim(rom, NEW_PICKUPS, 0x80, 'new pickups')
+    if bytes(rom[BEAN_COLLECT:BEAN_COLLECT + 6]) != bytes.fromhex('31fc0040e9cc'):
+        raise ValueError('jelly bean code at $%06X is not the original' % BEAN_COLLECT)
+    if struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] != BEAN_HANDLER:
+        raise ValueError('jelly bean handler is not the original')
+    if bytes(rom[BEAN_PIECE:BEAN_PIECE + 6]) != bytes.fromhex('050143a4f8f8'):
+        raise ValueError('jelly bean sprite is not the original')
+    base = NEW_PICKUPS
+    c = bytearray()
+    # upside-down bean sprite piece (vertical flip, bit 12) and its script
+    piece = base + len(c)
+    c += bytes(rom[BEAN_PIECE:BEAN_PIECE + 6])
+    struct.pack_into('>H', c, 2, 0x43A4 | 0x1000)
+    script = base + len(c)
+    c += struct.pack('>BBh', 0, 0xFF, piece - (script + 2))
+    c += struct.pack('>BBh', 0, 0, script - (script + 6))       # loop
+    # handler wrapper: a marked bean still on the original script gets ours
+    handler = base + len(c)
+    c += bytes.fromhex('082e0006d303'      # btst #6,-$2CFD(a6)   (variant?)
+                       '6724'              # beq.s go
+                       '202edc00')         # move.l -$2400(a6),d0 (current script)
+    c += bytes.fromhex('0c80') + struct.pack('>I', BEAN_SCRIPTS[0]) + bytes.fromhex('6708')   # beq.s swap
+    c += bytes.fromhex('0c80') + struct.pack('>I', BEAN_SCRIPTS[1]) + bytes.fromhex('6610')   # bne.s go
+    c += bytes.fromhex('2d7c') + struct.pack('>I', script) + bytes.fromhex('dc00')            # swap: script
+    c += bytes.fromhex('2d7c') + struct.pack('>I', piece) + bytes.fromhex('dd00')             #       sprite
+    c += struct.pack('>HI', 0x4EF9, BEAN_HANDLER)                                             # go
+    # collect: normal beans heal as before; the upside-down bean hurts
+    collect = base + len(c)
+    c += bytes.fromhex('082e0006d303'      # btst #6,-$2CFD(a6)
+                       '660c'              # bne.s bad
+                       '31fc0040e9cc')     # move.w #$40,$E9CC   (original)
+    c += struct.pack('>HI', 0x4EF9, BEAN_COLLECT_REST)
+    c += bytes.fromhex('426ed000'          # bad: clr.w -$3000(a6)   (remove it)
+                       '103c0021')         # move.b #$21,d0          (the hit sound)
+    c += struct.pack('>HI', 0x4EB9, 0x0118B6)                                                # jsr play sound
+    c += bytes.fromhex('04780010d200'      # subi.w #$10,$D200
+                       '6e06'              # bgt.s done
+                       '31fc0001d200'      # move.w #1,$D200
+                       '4e75')             # done: rts
+    assert len(c) <= 0x80
+    rom[NEW_PICKUPS:NEW_PICKUPS + len(c)] = c
+    rom[HANDLERS + BEAN:HANDLERS + BEAN + 4] = struct.pack('>I', handler)
+    rom[BEAN_COLLECT:BEAN_COLLECT + 6] = struct.pack('>HI', 0x4EF9, collect)
+
+
+# Head Hunter: the unused head $180 (goggles and headset). The game already treats it
+# as a plain head with the usual timer, but it has no attack; it gets the normal head's.
+# While it's worn, ordinary enemies sometimes drop a pickup when defeated (bosses never
+# do): 7 in 16 a jelly bean (a quarter of them upside-down with the new pickups), 3 in 16
+# a 500-point item (only in the stages with its art, POINT_STAGES), 1 in 16 a 1-up.
+# The hook is the score routine ($010FEC), which every defeat that awards points calls
+# with the enemy in a6. Bosses are told apart by their starting HP (T1 + 3): ordinary
+# enemies have 1-16, bosses $40 and more. The drop is spawned with the game's own
+# routine ($0009A8: a6 = new slot, a3 = type, no saved ID) in a free slot from $EC down,
+# at the enemy's position. At most one drop per 8 frames (frame counter
+# $E800, last drop's frame kept in $FFFFFF): some enemies award score more than once.
+HEAD_HUNTER = 0x180
+HH_FIX = 0x1D6280
+POINT_STAGES = (0x02, 0x04, 0x16, 0x18, 0x22, 0x26, 0x2C)   # the stages with 500-point art
+SCORE = 0x010FEC
+SPAWN = 0x0009A8
+RANDOM = 0x05AD3C             # returns a random byte in d0 (only touches d0)
+# Per-head attack tables (long per head, indexed by head ID / 8): what pressing attack
+# does ($016CE6) and the idle / throw state ($016C26). Head $180 points to "nothing"
+# ($0156E6) in both, so it can't attack; give it the normal head's entries.
+ATTACK_TABLES = ((0x016CE6, 0x0170DC), (0x016C26, 0x016D58))
+NOTHING = 0x0156E6
+# Headcase symbols: when a Headcase switches heads it DMAs that head's 2x2 symbol
+# (128 bytes) from ROM. The table at $01D1D2 (long per head, index head/8 - 4) holds
+# the DMA source registers ($95xx $96yy); the high source bits are fixed ($9706), so
+# symbols must sit in $0C0000-$0DFFFF. Head Hunter gets Ticker's symbol (the "00" on
+# its goggles) recoloured: white ring, red digits.
+SYMBOL_TABLE = 0x01D1D2
+HH_SYMBOL = 0x0CDF80
+SYMBOL_RECOLOUR = {7: 2, 2: 5, 3: 6, 13: 6}     # Headdy's palette: yellow->white, white->red
+
+
+def symbol_entry(addr):
+    assert 0xC0000 <= addr < 0xE0000 and addr % 2 == 0
+    return struct.pack('>BBBB', 0x95, (addr >> 1) & 0xFF, 0x96, (addr >> 9) & 0xFF)
+
+
+def symbol_source(rom, head):
+    i = (head >> 3) - 4
+    b = rom[SYMBOL_TABLE + i:SYMBOL_TABLE + i + 4]
+    assert b[0] == 0x95 and b[2] == 0x96, 'Headcase symbol table is not the original'
+    return (0x06 << 17) | (b[3] << 9) | (b[1] << 1)
+
+
+def patch_head_hunter(rom):
+    claim(rom, HH_FIX, 0x200, 'Head Hunter')
+    # with the new pickups, some drops are upside-down beans
+    bad_beans = NEW_PICKUPS <= struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] < NEW_PICKUPS + 0x80
+    if bytes(rom[SCORE:SCORE + 16]) != bytes.fromhex('386ed1004240102c1247d178e8f04e75'):
+        raise ValueError('score code at $%06X is not the original' % SCORE)
+    c = bytearray()
+    labels, fix = {}, []
+    def short(op, name):                   # Bcc.s
+        c.extend(bytes([op, 0])); fix.append((len(c) - 1, name, 1))
+    def word(op, name):                    # Bcc.w
+        c.extend(bytes([op, 0, 0, 0])); fix.append((len(c) - 2, name, 2))
+    c += bytes.fromhex('386ed100'          # movea.w -$2F00(a6),a4   (original: score)
+                       '4240'              # clr.w d0
+                       '102c1247'          # move.b $1247(a4),d0
+                       'd178e8f0')         # add.w d0,$E8F0
+    c += bytes.fromhex('0c780180ee0a')     # cmpi.w #$180,$EE0A     (Head Hunter worn?)
+    word(0x66, 'done')
+    c += bytes.fromhex('0c2c00400aa7')     # cmpi.b #$40,$AA7(a4)   (starting HP: boss?)
+    word(0x64, 'done')
+    for t in PICKUPS:                      # collecting a pickup also awards score
+        c += struct.pack('>HH', 0xB8FC, t) # cmpa.w #t,a4
+        word(0x67, 'done')
+    c += bytes.fromhex('48e7e0d2')         # movem.l d0-d2/a0-a1/a3/a6,-(sp)
+    c += struct.pack('>HI', 0x4EB9, RANDOM)
+    c += bytes.fromhex('0240000f'          # andi.w #$F,d0           0: 1-up, 1-7: jelly bean,
+                       '367c001c'          # movea.w #$1C,a3         8-10: 500 points (only in
+                       '4a40')             # tst.w d0                 stages that have its art)
+    short(0x67, 'spawn')
+    c += bytes.fromhex('367c0128'          # movea.w #$128,a3        (jelly bean)
+                       '0c400007')         # cmpi.w #7,d0
+    short(0x63, 'spawn')                   # bls.s spawn
+    c += bytes.fromhex('0c40000a')         # cmpi.w #10,d0
+    word(0x62, 'pop')                      # 11-15: nothing
+    c += bytes.fromhex('367c0184'          # movea.w #$184,a3        (500 points)
+                       '3238e8aa')         # move.w $E8AA,d1         (stage)
+    for st in POINT_STAGES:
+        c += struct.pack('>HH', 0x0C41, st)  # cmpi.w #st,d1
+        short(0x67, 'spawn')
+    word(0x60, 'pop')                      # no 500-point art here: nothing
+    labels['spawn'] = len(c)
+    # at most one drop per 8 frames: some enemies award their score more than once
+    c += bytes.fromhex('1238e801'          # move.b $E801,d1         (frame counter)
+                       '9238ffff'          # sub.b $FFFF,d1          (frame of the last drop)
+                       '0c010008')         # cmpi.b #8,d1
+    word(0x65, 'pop')                      # bcs pop
+    c += bytes.fromhex('11f8e801ffff')     # move.b $E801,$FFFF
+    c += bytes.fromhex('224e'              # movea.l a6,a1           (the enemy)
+                       '3c7c00ec')         # movea.w #$EC,a6         (free slot below $F0:
+                                           #  explosions put their debris in $F0-$FC)
+    labels['loop'] = len(c)
+    c += bytes.fromhex('4a6ed000')         # tst.w -$3000(a6)
+    short(0x67, 'found')
+    c += bytes.fromhex('594e'              # subq.w #4,a6
+                       'bcfc0040')         # cmpa.w #$40,a6
+    short(0x64, 'loop')
+    word(0x60, 'pop')                      # no free slot: no drop
+    labels['found'] = len(c)
+    c += struct.pack('>HI', 0x4EB9, SPAWN) # jsr spawn (type a3 in slot a6)
+    c += bytes.fromhex('2d69d400d400'      # move.l -$2C00(a1),-$2C00(a6)   x
+                       '2d69d500d500')     # move.l -$2B00(a1),-$2B00(a6)   y
+    if bad_beans:                          # a quarter of the jelly beans are upside-down
+        c += bytes.fromhex('0c6e0128d100') # cmpi.w #$128,-$2F00(a6)
+        short(0x66, 'pop')
+        c += struct.pack('>HI', 0x4EB9, RANDOM)
+        c += bytes.fromhex('02400003')     # andi.w #3,d0
+        short(0x66, 'pop')
+        c += bytes.fromhex('002e0040d303') # ori.b #$40,-$2CFD(a6)
+    labels['pop'] = len(c)
+    c += bytes.fromhex('4cdf4b07')         # movem.l (sp)+,d0-d2/a0-a1/a3/a6
+    labels['done'] = len(c)
+    c += bytes.fromhex('4e75')             # rts
+    # Touching a pickup clears bits 1-2 of its flags (touchable) and switches it from
+    # state 0 (wait) to 2 (the grow/shrink animation, then the effect). A drop appears
+    # where the head just hit the enemy, so for its first 24 frames a drop is kept
+    # untouchable (and back in state 0, in case it was touched before its first
+    # frame); then it becomes touchable. Drops are recognised by their saved-ID byte
+    # $F0; their age counts in -$1D00(a6).
+    for typ in PICKUPS:
+        labels['wrap%X' % typ] = len(c)
+        c += bytes.fromhex('0c2e00f0d302')     # cmpi.b #$F0,-$2CFE(a6)  (a drop?)
+        short(0x66, 'go%X' % typ)
+        c += bytes.fromhex('0c6e0018e300')     # cmpi.w #24,-$1D00(a6)   (still young?)
+        short(0x64, 'go%X' % typ)
+        c += bytes.fromhex('526ee300'          # addq.w #1,-$1D00(a6)
+                           '426ed102'          # clr.w -$2EFE(a6)        (waiting)
+                           '026efff9d000'      # andi.w #$FFF9,-$3000(a6) (untouchable)
+                           '0c6e0018e300')     # cmpi.w #24,-$1D00(a6)
+        short(0x66, 'go%X' % typ)
+        c += bytes.fromhex('006e0006d000')     # ori.w #6,-$3000(a6)     (grown up: touchable)
+        labels['go%X' % typ] = len(c)
+        orig = struct.unpack('>I', rom[HANDLERS + typ:HANDLERS + typ + 4])[0]
+        c += struct.pack('>HI', 0x4EF9, orig)  # jmp the pickup's code (or another wrapper)
+    for at, name, size in fix:
+        if size == 1:
+            d = labels[name] - (at + 1)
+            assert -128 <= d < 128 and d != 0
+            c[at] = d & 0xFF
+        else:
+            struct.pack_into('>h', c, at, labels[name] - at)
+    assert len(c) <= 0x200, len(c)
+    rom[HH_FIX:HH_FIX + len(c)] = c
+    rom[SCORE:SCORE + 6] = struct.pack('>HI', 0x4EF9, HH_FIX)
+    for typ in PICKUPS:
+        rom[HANDLERS + typ:HANDLERS + typ + 4] = struct.pack('>I', HH_FIX + labels['wrap%X' % typ])
+    claim(rom, HH_SYMBOL, 0x80, 'Head Hunter symbol')
+    src = symbol_source(rom, 0x060)                              # Ticker's symbol
+    rom[HH_SYMBOL:HH_SYMBOL + 0x80] = bytes(
+        (SYMBOL_RECOLOUR.get(b >> 4, b >> 4) << 4) | SYMBOL_RECOLOUR.get(b & 15, b & 15)
+        for b in rom[src:src + 0x80])
+    i = (HEAD_HUNTER >> 3) - 4
+    rom[SYMBOL_TABLE + i:SYMBOL_TABLE + i + 4] = symbol_entry(HH_SYMBOL)
+    for table, normal in ATTACK_TABLES:
+        a = table + (HEAD_HUNTER >> 3)
+        if struct.unpack('>I', rom[a:a + 4])[0] != NOTHING or struct.unpack('>I', rom[table:table + 4])[0] != normal:
+            raise ValueError('head attack table at $%06X is not the original' % table)
+        rom[a:a + 4] = struct.pack('>I', normal)
+
+
+def place_new_pickups(rom, rng):
+    beans = [(s, x, e) for s, x, e in find_placements(rom, (BEAN,)) if rom[e + 5] == 0]
+    chosen = rng.sample(beans, max(1, len(beans) // 3))
+    log = ['== New pickups (upside-down bean: takes half your health)']
+    for s, x, e in sorted(chosen):
+        rom[e + 5] |= VARIANT
+        log.append('%-6s X=%-5d upside-down bean' % (STAGE_NAMES.get(s, '$%02X' % s), x))
+    patch_new_pickups(rom)
     return log
 
 
@@ -1002,6 +1321,13 @@ def randomize(rom_in, opts=None, jp_rom=None):
         if o['flying_heads']:
             log += [''] + patch_flying_heads(rom)
         log += [''] + randomize_headcases(rom, rng_for('headcases'), o)
+    if o['pickups'] != 'off':
+        log += [''] + shuffle_pickups(rom, rng_for('pickups'), o['pickups'])
+    if o['new_pickups']:
+        log += [''] + place_new_pickups(rom, rng_for('new pickups'))
+    if o['head_hunter']:
+        patch_head_hunter(rom)             # after new pickups: both wrap the bean's code
+        log += ['', '== Head Hunter: in the Headcase pool; enemies sometimes drop pickups while it is worn']
     if o['jp_palettes']:
         apply_jp_palettes(rom, jp_rom)
         log += ['', '== JP palettes: %s' % ', '.join(map(str, JP_CHANGED))]
@@ -1022,12 +1348,12 @@ def main():
         flag = '--' + k.replace('_', '-')
         if v.get('type') == 'bool':
             ap.add_argument(flag, dest=k, action=argparse.BooleanOptionalAction,
-                            default=v['default'], help=v['desc'])
+                            default=v['default'], help=v['desc'].replace('%', '%%'))
         elif v.get('type') == 'int':
-            ap.add_argument(flag, dest=k, type=int, default=v['default'], help=v['desc'])
+            ap.add_argument(flag, dest=k, type=int, default=v['default'], help=v['desc'].replace('%', '%%'))
         else:
             ap.add_argument(flag, dest=k, choices=v['choices'], default=v['default'],
-                            help=v['desc'])
+                            help=v['desc'].replace('%', '%%'))
     args = ap.parse_args()
     opts = {k: getattr(args, k) for k in OPTIONS}
     jp = open(args.jp_rom, 'rb').read() if args.jp_rom else None

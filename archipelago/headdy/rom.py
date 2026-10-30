@@ -91,11 +91,14 @@ def write_patch(world: "HeaddyWorld", output_directory: str) -> None:
         "headtrip": bool(o.head_trip.value),
         "boss_bomb": bool(o.boss_bomb.value),
         "flying_heads": bool(o.flying_heads.value),
+        "head_hunter": bool(o.head_hunter.value),
         "jp_balance": bool(o.jp_balance.value),
         "jp_palettes": bool(o.jp_palettes.value),
         "palettes": ["off", "safe", "hue", "chaos"][o.palettes.value],
         "palette_sprites": bool(o.palette_sprites.value),
         "enemy_damage": ["off", "random", "half", "double"][o.enemy_damage.value],
+        "pickups": ["off", "shuffle", "random"][o.pickup_shuffle.value],
+        "new_pickups": bool(o.new_pickups.value),
     }
     cfg = {
         "randomizer": randomizer,
