@@ -48,7 +48,7 @@ OPTIONS = {
     'bonus_logic':   {'default': True, 'type': 'bool',
                       'desc': 'Guarantee the heads needed for Secret Bonus Points.'},
     'pickup_logic':  {'default': True, 'type': 'bool',
-                      'desc': 'Guarantee the heads needed to reach pickups (Vacuum in 4-1).'},
+                      'desc': 'Guarantee the heads needed to reach pickups (Vacuum in two Headcases in 4-1).'},
     'headtrip':      {'default': True, 'type': 'bool',
                       'desc': 'Allow Head Trip (a huge, heavy head that makes you slow and easy to stomp) in Headcases.'},
     'boss_bomb':     {'default': True, 'type': 'bool',
@@ -61,6 +61,9 @@ OPTIONS = {
                       'desc': 'Add Head Hunter (an unused head) to the Headcase shuffle: it '
                               'attacks like the normal head, and defeated enemies sometimes '
                               'drop a pickup (never bosses).'},
+    'stage_order':   {'default': False, 'type': 'bool',
+                      'desc': 'Play the acts in a random order: 1-1 first, 9-3 last, 6-1 to 6-4 '
+                              'together and in order. (Not with the stage-select hub.)'},
     'pickups':       {'default': 'off', 'choices': ['off', 'shuffle', 'random'],
                       'desc': 'shuffle: jelly beans, 500-point items and 1-ups swap spots. '
                               'random: every spot gets a random pickup (45% bean, 45% 500 '
@@ -163,7 +166,8 @@ BONUS = {
 }
 # Heads needed to reach pickups (pickup logic).
 PICKUP_REQS = {
-    8:  [(0x140,)],       # 4-1: Vacuum pulls in 5 pickups that can't be reached otherwise
+    8:  [(0x140,)],       # 4-1 (X=2416, 3040): Vacuum pulls in 5 pickups that can't be reached otherwise
+    19: [(0x140,)],       # 4-1 (X=5008): the same for more pickups further on
 }
 # Stages where flying heads must not appear (play-testing): 4-1 (the camera
 # scrolls on its own at the end and Headdy is lost), 4-3 (same when carried into
@@ -364,6 +368,8 @@ def randomize_headcases(rom, rng, o):
             if keep and len(heads) < len(old):
                 heads.append(rng.choice(keep))
         size = max(len(old), len(heads))
+        if o['pickup_logic'] and k in PICKUP_REQS and len(heads) >= size:
+            size = min(3, size + 1)            # keep one random head next to the required ones
         set_pool = [h for h in pool if not (k in no_fly and h in FLYING)
                     and h not in SET_BANS.get(k, ())]
         while len(heads) < size:
@@ -645,6 +651,48 @@ def randomize_stats(rom, rng, o):
     return log
 
 
+# ---------------------------------------------------------------- stage order
+# When an act ends, the game loads NEXT_STAGE[current stage] (word table indexed by stage
+# ID, $015FAA). 5-3 is the exception: its script ($00C9FC) adds 2 to the stage ID
+# instead, so it's pointed at the table too. Tutorial rooms ($02506A) and basketball
+# ($00ED78) go back to the stage they came from and aren't affected; a continue goes
+# back to the act you were on. The curtain names the stage it is loading.
+NEXT_STAGE = 0x00672A
+STAGE_ORDER_FIX = 0x05B3C0 - 0x20          # end of the free space after the new pickups
+FIRST_ACT, LAST_ACT = 0x00, 0x30           # 1-1 and 9-3 stay put
+ACT_6 = [0x50, 0x52, 0x54, 0x56]           # one block: the flying head carries through
+
+
+def shuffle_stage_order(rom, rng):
+    names = {sid: n for n, sid in ACTS}
+    for sid, nxt in zip([sid for _, sid in ACTS], [sid for _, sid in ACTS][1:]):
+        assert w16(rom, NEXT_STAGE + sid) == nxt, 'next-stage table is not the original'
+    blocks = [[sid] for _, sid in ACTS if sid not in (FIRST_ACT, LAST_ACT) and sid not in ACT_6]
+    blocks.append(ACT_6)
+    rng.shuffle(blocks)
+    order = [FIRST_ACT] + [sid for b in blocks for sid in b] + [LAST_ACT]
+    for a, b in zip(order, order[1:]):
+        put16(rom, NEXT_STAGE + a, b)
+    # 5-3's own exit: addq.w #2,$E8AA / addq.w #2,$E8C2 -> jsr fix / nop
+    if bytes(rom[0x00C9FC:0x00CA04]) != bytes.fromhex('5478e8aa5478e8c2'):
+        raise ValueError('5-3 exit code at $00C9FC is not the original')
+    claim(rom, STAGE_ORDER_FIX, 0x20, 'stage order')
+    # The end-of-act routine it jumps to ($0083A0) decides by $E8AA how to leave: as 5-4
+    # (as in the original) it loads the next stage straight away, without the curtain
+    # sequence, which can't run from the middle of 5-3's climb. So $E8AA still becomes
+    # 5-4; only the stage that is loaded ($E8C2) comes from the table.
+    c = bytes.fromhex('2f00 2f08'                     # move.l d0,-(sp) / move.l a0,-(sp)
+                      '3038e8aa'                      # move.w $E8AA,d0
+                      '41f9') + struct.pack('>I', NEXT_STAGE) + bytes.fromhex(
+                      '31f00000e8c2'                  # move.w 0(a0,d0.w),$E8C2
+                      '5478e8aa'                      # addq.w #2,$E8AA (original)
+                      '205f 201f'                     # movea.l (sp)+,a0 / move.l (sp)+,d0
+                      '4e75')                         # rts
+    rom[STAGE_ORDER_FIX:STAGE_ORDER_FIX + len(c)] = c
+    rom[0x00C9FC:0x00CA04] = struct.pack('>HIH', 0x4EB9, STAGE_ORDER_FIX, 0x4E71)
+    return ['== Stage order: ' + ', '.join(names[sid] for sid in order)]
+
+
 # ---------------------------------------------------------------- pickups
 # Pickups are placement entries like everything else: byte 4 is the entry's saved
 # ID (collected pickups stay collected), byte 5 a parameter, bytes 6-7 the type.
@@ -819,7 +867,7 @@ PU_HOOKS = (
 
 
 def patch_new_pickups(rom):
-    claim(rom, NEW_PICKUPS, 0x5C0, 'new pickups')
+    claim(rom, NEW_PICKUPS, 0x5A0, 'new pickups')
     if bytes(rom[BEAN_COLLECT:BEAN_COLLECT + 6]) != bytes.fromhex('31fc0040e9cc'):
         raise ValueError('jelly bean code at $%06X is not the original' % BEAN_COLLECT)
     if struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] != BEAN_HANDLER:
@@ -1001,7 +1049,7 @@ def patch_new_pickups(rom):
     a.label('pit_sub')
     a.h('9178d200 4cdf0001 4e75')         # sub.w d0,$D200 / movem.l (sp)+,d0 (keeps the flags) / rts
     code = a.done()
-    assert len(code) <= 0x5C0, len(code)
+    assert len(code) <= 0x5A0, len(code)
     rom[NEW_PICKUPS:NEW_PICKUPS + len(code)] = code
     rom[HANDLERS + BEAN:HANDLERS + BEAN + 4] = struct.pack('>I', a.addr('handler'))
     rom[BEAN_COLLECT:BEAN_COLLECT + 6] = struct.pack('>HI', 0x4EF9, a.addr('collect'))
@@ -1061,7 +1109,7 @@ def symbol_source(rom, head):
 def patch_head_hunter(rom):
     claim(rom, HH_FIX, 0x200, 'Head Hunter')
     # with the new pickups, some drops are upside-down or powerup beans
-    bad_beans = NEW_PICKUPS <= struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] < NEW_PICKUPS + 0x5C0
+    bad_beans = NEW_PICKUPS <= struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] < NEW_PICKUPS + 0x5A0
     if bytes(rom[SCORE:SCORE + 16]) != bytes.fromhex('386ed1004240102c1247d178e8f04e75'):
         raise ValueError('score code at $%06X is not the original' % SCORE)
     c = bytearray()
@@ -1570,6 +1618,8 @@ def randomize(rom_in, opts=None, jp_rom=None):
         if o['flying_heads']:
             log += [''] + patch_flying_heads(rom)
         log += [''] + randomize_headcases(rom, rng_for('headcases'), o)
+    if o['stage_order']:
+        log += [''] + shuffle_stage_order(rom, rng_for('stage order'))
     if o['pickups'] != 'off':
         log += [''] + shuffle_pickups(rom, rng_for('pickups'), o['pickups'])
     if o['new_pickups']:

@@ -256,7 +256,7 @@ select { max-width: 56vw; }
       <div class="row sub hc">
         <label for="pickup_logic">Pickup logic</label>
         <span class="switch"><input type="checkbox" id="pickup_logic"></span>
-        <div class="desc">Also guarantee the heads needed to reach every pickup (Vacuum in 4-1).</div>
+        <div class="desc">Also guarantee the heads needed to reach every pickup (Vacuum in two Headcases in 4-1).</div>
       </div>
       <div class="row sub hc">
         <label for="headtrip">Allow Head Trip</label>
@@ -352,6 +352,11 @@ select { max-width: 56vw; }
     <fieldset>
       <legend>Extras</legend>
       <div class="row">
+        <label for="stage_order">Shuffle stage order</label>
+        <span class="switch"><input type="checkbox" id="stage_order"></span>
+        <div class="desc">Play the acts in a random order. 1-1 stays first and 9-3 last; 6-1 to 6-4 stay together and in order. Each curtain names the stage you're about to play. Ignored with the stage-select hub.</div>
+      </div>
+      <div class="row">
         <label for="hub">Stage-select hub</label>
         <span class="switch"><input type="checkbox" id="hub"></span>
         <div class="desc">Start opens a stage select instead of a new game. Every act returns there when you finish it, and it counts your Secret Bonus Points and remembers the code digits.</div>
@@ -395,10 +400,10 @@ select { max-width: 56vw; }
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-const BOOLS = ["bonus_logic", "pickup_logic", "headtrip", "flying_heads", "head_hunter", "boss_bomb",
+const BOOLS = ["bonus_logic", "pickup_logic", "stage_order", "headtrip", "flying_heads", "head_hunter", "boss_bomb",
                "palette_sprites", "jp_palettes", "jp_balance", "hub", "hub_locked", "new_pickups"];
 const SELECTS = ["headcases", "palettes", "enemy_damage", "pickups"];
-const DEFAULTS = {headcases: "safe", bonus_logic: true, pickup_logic: true, headtrip: true, flying_heads: false, head_hunter: false,
+const DEFAULTS = {headcases: "safe", bonus_logic: true, pickup_logic: true, stage_order: false, headtrip: true, flying_heads: false, head_hunter: false,
   boss_bomb: true, palettes: "off", palette_sprites: false, jp_palettes: false,
   enemy_damage: "off", jp_balance: false, hub: false, hub_locked: false, pickups: "off", new_pickups: false};
 const PRESETS = {
@@ -575,6 +580,8 @@ def check_jp(u8):
 def run(us, jp, opts_json, hub, hub_locked):
     opts = json.loads(opts_json)
     opts = {k: v for k, v in opts.items() if k in headdy_rando.OPTIONS}
+    if hub:
+        opts['stage_order'] = False      # the hub picks the next stage itself
     o = headdy_rando.normalize(opts)
     rom, log = headdy_rando.randomize(bytes(us.to_py()), o, bytes(jp.to_py()) if jp is not None else None)
     if hub:
