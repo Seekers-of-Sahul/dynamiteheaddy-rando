@@ -152,7 +152,7 @@ What `--jp-balance` changes:
 - **1-1 boss:** slower attacks, and the energy balls do less damage.
 - **Stair Wars:** fixed pattern (3 hooks, then an opening), and **4** hits instead of 8.
 - **Act 7 real boss:** **9** hits (US: 17).
-- **8-5 boss:** **33** hits but a bigger hitbox (US: 17).
+- **8-5 boss:** a bigger hitbox. (The JP boss also takes 33 hits instead of 17, but the US version shows boss health in the spotlight and can't handle that much, so it keeps the US amount.)
 - **9-3 boss:** **9** hits and slower attacks (US: 17).
 - **6-1:** the JP enemy waves (1 shark instead of 5, plus the second Jayron wave) and the longer JP stage.
 - **Layouts:** the **3-1 Headcase** the US version removed is back, along with the JP layouts of 6-2 and 6-4.

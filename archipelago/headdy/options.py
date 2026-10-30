@@ -103,7 +103,7 @@ class NewPickups(Toggle):
 class JPBalance(Toggle):
     """
     Japanese difficulty: 2 starting continues, a continue every 10 tokens, the JP 1-1 boss, Stair Wars
-    pattern, act 7 / 8-5 / 9-3 boss HP, JP 6-1 waves and the 3-1 (extra Headcase), 6-2 and 6-4 layouts.
+    pattern, act 7 / 9-3 boss HP, 8-5 boss hitbox, JP 6-1 waves and the 3-1 (extra Headcase), 6-2 and 6-4 layouts.
     Needs the Dynamite Headdy (Japan) ROM when patching.
     """
     display_name = "JP Balance"

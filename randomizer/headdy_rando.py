@@ -73,8 +73,8 @@ OPTIONS = {
                               'head hitbox) or heavy (half damage, no knockback).'},
     'jp_balance':    {'default': False, 'type': 'bool',
                       'desc': 'Japanese difficulty: 2 starting continues, a continue every '
-                              '10 tokens, JP enemy damage/HP, JP 1-1 boss, Stair Wars, act 7, '
-                              '8-5 and 9-3 bosses, JP 6-1 waves and the 3-1/6-2/6-4 layouts.'},
+                              '10 tokens, JP enemy damage/HP, JP 1-1 boss, Stair Wars, act 7 and '
+                              '9-3 bosses, 8-5 boss hitbox, JP 6-1 waves and the 3-1/6-2/6-4 layouts.'},
     'jp_palettes':   {'default': False, 'type': 'bool',
                       'desc': 'Restore the Japanese colours of the 8 palettes the US '
                               'version changed.'},
@@ -1451,7 +1451,8 @@ JP_PATCHES = [
     (0x032DFD, 1, '8d883f1577ca', ('H', '04'), 'Stair Wars: 4 hits instead of 8'),
     (0x03A888, 2, 'a481f1a81cba', ('J', 0x03A566, 2), 'act 7 boss (second form): 9 hits instead of 17'),
     (0x000F93, 1, '511993d3c997', ('J', 0x000F97, 1), '9-3 boss: 9 hits instead of 17'),
-    (0x00108F, 1, '511993d3c997', ('J', 0x001093, 1), '8-5 boss: 33 hits instead of 17'),
+    # Not used: the JP 8-5 boss has more HP ($60 instead of $50, 33 hits), but the US version shows
+    # boss health in the spotlight and its tables stop at $50: the screen fills with garbage.
     (0x00182D, 1, '8d883f1577ca', ('J', 0x00182D, 1), '8-5 boss: hitbox 16 high instead of 8'),
     (0x00121B, 1, 'a9de501bd963', ('J', 0x00121F, 1), 'type $774 HP 140 instead of 134'),
     (0x000BD0, 2, '8bbf6f236fa1', ('J', 0x000BD4, 2), '1-1 boss energy balls: JP flags'),
