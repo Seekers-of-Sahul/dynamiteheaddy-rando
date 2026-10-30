@@ -47,6 +47,8 @@ OPTIONS = {
                               'original heads; chaos: only the logic is guaranteed.'},
     'bonus_logic':   {'default': True, 'type': 'bool',
                       'desc': 'Guarantee the heads needed for Secret Bonus Points.'},
+    'pickup_logic':  {'default': True, 'type': 'bool',
+                      'desc': 'Guarantee the heads needed to reach pickups (Vacuum in 4-1).'},
     'headtrip':      {'default': True, 'type': 'bool',
                       'desc': 'Allow Head Trip (a huge, heavy head that makes you slow and easy to stomp) in Headcases.'},
     'boss_bomb':     {'default': True, 'type': 'bool',
@@ -159,6 +161,10 @@ BONUS = {
     39: [(SLAMMER,)],     # 9-1
     41: [(SLAMMER,)],
 }
+# Heads needed to reach pickups (pickup logic).
+PICKUP_REQS = {
+    8:  [(0x140,)],       # 4-1: Vacuum pulls in 5 pickups that can't be reached otherwise
+}
 # Stages where flying heads must not appear (play-testing): 4-1 (the camera
 # scrolls on its own at the end and Headdy is lost), 4-3 (same when carried into
 # 4-4), 5-1 (breaks completely), 8-2. Every set used by a Headcase there is kept
@@ -176,6 +182,8 @@ RUNTIME_USERS = {
     16: ['5-3 switching Headcase', '2-3 boss (random 14-29)'],
     17: ['5-3 switching Headcase', '2-3 boss (random 14-29)'],
     38: ['act 7 boss'], 40: ['act 7 boss'],
+    6: ['Headcase tutorial (2-1), 2nd'], 7: ['Headcase tutorial (2-1), 3rd'],
+    33: ['2-3, 2nd'], 37: ['2-3, 3rd'],
 }
 SET_TABLE, NUM_SETS = 0x01D222, 46
 STAGE_TABLE, HEADCASE_TYPE = 0x059C4A, 0x018
@@ -331,8 +339,8 @@ def randomize_headcases(rom, rng, o):
         users.setdefault(k, []).extend(u)
     fixed = {44}                  # the 6-1 Headcase that starts the flight
     no_fly = {rom[e + 5] & 0x7F for st, x, e in find_headcases(rom) if st in FLY_BANNED_STAGES}
-    log = ['== Headcases (%s, bonus logic %s, head trip %s, act 7 bomb %s)' % (
-        o['headcases'], 'on' if o['bonus_logic'] else 'off',
+    log = ['== Headcases (%s, bonus logic %s, pickup logic %s, head trip %s, act 7 bomb %s)' % (
+        o['headcases'], 'on' if o['bonus_logic'] else 'off', 'on' if o['pickup_logic'] else 'off',
         'on' if o['headtrip'] else 'off',
         'kept' if o['boss_bomb'] else 'not kept')]
     for k in range(NUM_SETS):
@@ -342,6 +350,8 @@ def randomize_headcases(rom, rng, o):
         reqs = [(r, 'P') for r in PROGRESSION.get(k, [])]
         if o['bonus_logic']:
             reqs += [(r, 'B') for r in BONUS.get(k, [])]
+        if o['pickup_logic']:
+            reqs += [(r, 'K') for r in PICKUP_REQS.get(k, [])]
         reqs = [r for r, kind in reqs]
         if k == 38 and o['boss_bomb']:
             reqs.append((BOMB,))
@@ -684,6 +694,12 @@ def find_placements(rom, types):
     return found
 
 
+def act_order(stage, x=0):
+    """Sort key: stages in play order (stage IDs aren't), then position."""
+    ids = [sid for _, sid in ACTS]
+    return (ids.index(stage) if stage in ids else 100 + stage, x)
+
+
 PICKUP_WEIGHTS = {BEAN: 45, POINTS: 45, ONE_UP: 10}
 
 
@@ -712,7 +728,7 @@ def _write_pickups(rom, spots, types, title):
     count = Counter(types)
     log = [title + ': %d jelly beans, %d 500-point items, %d 1-ups' % (
         count[BEAN], count[POINTS], count[ONE_UP])]
-    for (s, x, e), t in zip(spots, types):
+    for (s, x, e), t in sorted(zip(spots, types), key=lambda p: act_order(p[0][0], p[0][1])):
         old = w16(rom, e + 6)
         base = UNFLOAT.get(old, old)
         if base != t:
@@ -795,7 +811,8 @@ PU_HOOKS = (
     (0x010D9A, '3c38da043e38db04', 'hitbox', 'jsr'),    # head hitbox: move.w $DA04,d6 / move.w $DB04,d7
     (0x010E6A, '0c780020ee0a', 'headdmg', 'jsr'),       # head damage: cmpi.w #$20,$EE0A
     (0x0110FA, '0c780020ee0a', 'headdmg', 'jsr'),       # (second copy)
-    (0x0109F2, '102c12464a78d202', 'hurt', 'jsr'),      # contact damage: move.b $1246(a4),d0 / tst.w $D202
+    (0x0109F6, '4a78d20266000214', 'hurt', 'jsr'),      # damage (d0): tst.w $D202 / bne.w $10C10 (rts)
+                                                        #  (spikes and others jump straight here)
     (0x010A2C, '0c7801a0ee0a', 'knock', 'jsr'),         # after the hit sound: cmpi.w #$1A0,$EE0A
     (0x015DBC, '5978d200670000826b00007e', 'pit', 'pit'),  # falling into a pit: subq.w #4,$D200 /
 )                                                        #  beq.w $15E44 / bmi.w $15E44
@@ -964,13 +981,15 @@ def patch_new_pickups(rom):
     a.label('hd_out')
     a.h('201f 0c780020ee0a 4e75')
     # ---- heavy: half damage, no knockback
-    a.label('hurt')
-    a.h('102c1246')                        # move.b $1246(a4),d0
+    a.label('hurt')                        # d0 = damage
     a.w(0x0C38, 0x0003, PU_KIND)           # cmpi.b #3,kind (heavy, double jump bit is clear)
-    a.b(BNE, 'hu_out')
+    a.b(BNE, 'hu_inv')
     a.h('e208')                            # lsr.b #1,d0
-    a.label('hu_out')
-    a.h('4a78d202 4e75')                   # tst.w $D202 / rts
+    a.label('hu_inv')
+    a.h('4a78d202'); a.b(BEQ, 'hu_rts')    # tst.w $D202 (still invincible: no damage)
+    a.h('588f')                            # addq.l #4,sp: return from the damage routine
+    a.label('hu_rts')
+    a.h('4e75')
     a.label('knock')
     a.w(0x0C38, 0x0003, PU_KIND); a.b(BNE, 'kn_out')
     a.h('588f 4e75')                       # addq.l #4,sp / rts (leave the hit routine: no knockback)
@@ -1176,7 +1195,7 @@ def place_new_pickups(rom, rng):
         kinds[e] = 1 + i % 3
     log = ['== New pickups (upside-down bean: takes half your health; powerup beans: '
            '15 seconds of double jump, power or heavy)']
-    for s, x, e in sorted(beans):
+    for s, x, e in sorted(beans, key=lambda b: act_order(b[0], b[1])):
         k = kinds.get(e)
         if k is None:
             continue

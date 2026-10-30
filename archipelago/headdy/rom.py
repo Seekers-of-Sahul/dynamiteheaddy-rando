@@ -88,6 +88,7 @@ def write_patch(world: "HeaddyWorld", output_directory: str) -> None:
         "seed": world.random.randrange(1 << 31),
         "headcases": ["off", "safe", "chaos"][o.headcases.value],
         "bonus_logic": True,          # the AP logic assumes every bonus point is reachable
+        "pickup_logic": True,         # and every pickup (pickupsanity)
         "headtrip": bool(o.head_trip.value),
         "boss_bomb": bool(o.boss_bomb.value),
         "flying_heads": bool(o.flying_heads.value),

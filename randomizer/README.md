@@ -70,6 +70,7 @@ python headdy_rando.py --help
 | `--headcases chaos` | Anything goes, but heads needed to finish a stage are still guaranteed. |
 | `--headcases off` | Headcases stay vanilla. |
 | `--no-bonus-logic` | Don't guarantee the heads needed for Secret Bonus Points. Some may become impossible. |
+| `--no-pickup-logic` | Don't guarantee the heads needed to reach pickups (Vacuum in 4-1, which pulls in 5 pickups). |
 | `--no-headtrip` | Never put Head Trip in a Headcase. It's a head to avoid: your head becomes so big and heavy that it's hard to move around, and enemies easily stomp on you. |
 | `--no-boss-bomb` | Don't guarantee Bomb Head at the act 7 boss. |
 | `--flying-heads` | Allow Rocket, Air and Feather Head in normal Headcases (see below). |
