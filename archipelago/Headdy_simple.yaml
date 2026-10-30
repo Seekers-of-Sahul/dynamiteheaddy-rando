@@ -21,5 +21,5 @@ Dynamite Headdy:
   palette_sprites: false       # also recolour Headdy and enemies
   enemy_damage: vanilla        # vanilla / shuffled / half / double
   pickup_shuffle: off          # off / shuffle / randomized
-  new_pickups: false           # some beans become upside-down beans (take half your health)
+  new_pickups: false           # some beans become upside-down beans (take half your health) or powerup beans
   death_link: false            # die when another DeathLink player dies, and vice versa

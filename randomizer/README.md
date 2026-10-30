@@ -73,7 +73,7 @@ python headdy_rando.py --help
 | `--no-headtrip` | Never put Head Trip in a Headcase. It's a head to avoid: your head becomes so big and heavy that it's hard to move around, and enemies easily stomp on you. |
 | `--no-boss-bomb` | Don't guarantee Bomb Head at the act 7 boss. |
 | `--flying-heads` | Allow Rocket, Air and Feather Head in normal Headcases (see below). |
-| `--head-hunter` | Add **Head Hunter** to the shuffle: an unused head (goggles and a headset) with a recoloured Ticker symbol. It attacks like the normal head, and while you wear it defeated enemies sometimes drop a pickup where it stood: a jelly bean (7 in 16; with `--new-pickups`, a quarter of them upside-down), a 500-point item (3 in 16, only in the stages that have them: 2-2, 4-1, 4-2, 4-3, 8-1, 8-3 and 9-1) or a 1-up (1 in 16). A drop can't be picked up for its first 24 frames, so the blow that defeats the enemy doesn't collect it. Bosses never drop anything. It never counts as a required head. |
+| `--head-hunter` | Add **Head Hunter** to the shuffle: an unused head (goggles and a headset) with a recoloured Ticker symbol. It attacks like the normal head, and while you wear it defeated enemies sometimes drop a pickup where it stood: a jelly bean (7 in 16; with `--new-pickups`, a quarter of them upside-down and 3 in 16 powerup beans), a 500-point item (3 in 16, only in the stages that have them: 2-2, 4-1, 4-2, 4-3, 8-1, 8-3 and 9-1) or a 1-up (1 in 16). A drop can't be picked up for its first 24 frames, so the blow that defeats the enemy doesn't collect it. Bosses never drop anything. It never counts as a required head. |
 
 The logic always guarantees:
 
@@ -136,7 +136,7 @@ Headdy has 32 health, and most hits normally take 2.
 | --- | --- |
 | `--pickups shuffle` | Jelly beans, 500-point items and 1-ups swap places. 500-point items stay in the stages that have them, because their graphics are only loaded there. |
 | `--pickups random` | Every pickup spot gets a random pickup: 45% jelly bean, 45% 500 points, 10% 1-up (500-point items only in stages that have them). The totals change from seed to seed. |
-| `--new-pickups` | About a third of the jelly beans become new pickups. **Upside-down bean:** takes half your health (16), but never below 1. |
+| `--new-pickups` | About half of the jelly beans become new pickups. **Upside-down bean** (a quarter of the beans): takes half your health (16), but never below 1. **Powerup beans** (another quarter): don't heal; they give a 15-second powerup, shown by an icon beside the health spotlight that blinks in the last 3 seconds. A new powerup replaces the current one; dying or finishing the act ends it. **Double jump** (bean with a star): jump once more in the air. **Power** (bean with a fireball): the head does double damage and its hitbox is half as big again. **Heavy** (two beans): half damage and no knockback. With Head Hunter, its jelly bean drops can be any of these too. |
 
 ### Japanese balance
 

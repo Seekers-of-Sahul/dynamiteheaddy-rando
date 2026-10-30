@@ -66,7 +66,9 @@ OPTIONS = {
                               'have them.'},
     'new_pickups':   {'default': False, 'type': 'bool',
                       'desc': 'Turn some jelly beans into new pickups. Upside-down bean: '
-                              'takes half your health (never below 1).'},
+                              'takes half your health (never below 1). Powerup beans give 15 '
+                              'seconds of double jump, power (double head damage, bigger '
+                              'head hitbox) or heavy (half damage, no knockback).'},
     'jp_balance':    {'default': False, 'type': 'bool',
                       'desc': 'Japanese difficulty: 2 starting continues, a continue every '
                               '10 tokens, JP enemy damage/HP, JP 1-1 boss, Stair Wars, act 7, '
@@ -729,61 +731,277 @@ def _write_pickups(rom, spots, types, title):
     return log
 
 
-# New pickups: jelly beans whose placement parameter has bit 6 set (bit 7 is masked off by the spawner). The bean's code
-# never reads the parameter (the object keeps it at $D303 + slot). Their look comes
-# from new animation scripts drawing shared art; their effect replaces the bean's.
-#   upside-down bean: takes 16 health (half the maximum), never below 1
-NEW_PICKUPS = 0x1D6200
+# New pickups: jelly beans with a variant in their placement parameter (the object keeps
+# it at $D303 + slot; the bean's own code never reads it; bit 7 is masked off by the
+# spawner, so only drops and the HUD icon, which we spawn, can have it):
+#   bit 6      upside-down bean: takes 16 health (half the maximum), never below 1
+#   bits 4-5   powerup bean (1 double jump, 2 power, 3 heavy): gives a 15-second powerup
+#              (no healing); a new one replaces the current one
+#   bit 7      the powerup icon beside the health spotlight (not a pickup)
+# Their look comes from new sprite pieces drawing shared art (bean, star, fireball).
+# Powerup state lives in Headdy's spare object field ($E300, cleared whenever Headdy is
+# spawned, so every stage and every life starts without one):
+#   $E300.w frames left, $E302.b kind (bits 0-1) + double jump used (bit 7),
+#   $E303.b slot of the icon / 4
+# Effects:
+#   double jump  jump again once in the air (the jump code: $016BBA; jump button bit
+#                number in $FFDA, jump speed of the current head in $EE18)
+#   power        the head does double damage ($010E6A / $0110FA) and its hitbox is half
+#                as big again ($010D9A)
+#   heavy        half damage and no knockback ($0109CE, Headdy's hit routine)
+NEW_PICKUPS = 0x05AE00          # free space ($FF) after the random number routine
 BEAN_HANDLER, BEAN_COLLECT, BEAN_COLLECT_REST = 0x0207FA, 0x02081A, 0x020820
 BEAN_SCRIPTS = (0x1A888A, 0x1A888E)       # the bean's animation script (both steps)
 BEAN_PIECE = 0x1A8892                     # its sprite piece: 2x2 tiles at $3A4
-VARIANT = 0x40
+VARIANT = 0x40                            # upside-down
+POWERUP = {1: 0x10, 2: 0x20, 3: 0x30}     # double jump, power, heavy
+POWERUP_NAMES = {1: 'double-jump bean', 2: 'power bean', 3: 'heavy bean'}
+HUD_MARK = 0x80
+PU_TIMER, PU_KIND, PU_HUD = 0xE300, 0xE302, 0xE303
+PU_TIME, PU_WARN = 15 * 60, 3 * 60
+PLAY_HANDLER = 0x0144D8
+BEAN_TILE, STAR_TILE, FIRE_TILE = 0x3A4, 0x34E, 0x34F
+HUD_X, HUD_Y, HUD_HIDE_Y = 0xC4, 0x98, 0x20
+
+
+class Asm:
+    """Tiny assembler helper: raw hex, labels, word branches, pc-relative lea."""
+    def __init__(self, base):
+        self.base, self.c, self.labels, self.fix = base, bytearray(), {}, []
+    def __len__(self):
+        return len(self.c)
+    def h(self, hexstr):
+        self.c += bytes.fromhex(hexstr.replace(' ', ''))
+    def w(self, *words):
+        for x in words:
+            self.c += struct.pack('>H', x & 0xFFFF)
+    def l(self, x):
+        self.c += struct.pack('>I', x & 0xFFFFFFFF)
+    def label(self, name):
+        assert name not in self.labels, name
+        self.labels[name] = len(self.c)
+    def addr(self, name):
+        return self.base + self.labels[name]
+    def b(self, cond, name):              # Bcc.w / BRA.w / BSR.w (cond = opcode high byte)
+        self.c += bytes([cond, 0, 0, 0]); self.fix.append((len(self.c) - 2, name, 'b'))
+    def lea(self, name, reg=0):           # lea name(pc),An
+        self.w(0x41FA | (reg << 9), 0); self.fix.append((len(self.c) - 2, name, 'b'))
+    def jsr(self, a):
+        self.w(0x4EB9); self.l(a)
+    def jmp(self, a):
+        self.w(0x4EF9); self.l(a)
+    def done(self):
+        for at, name, kind in self.fix:
+            struct.pack_into('>h', self.c, at, self.labels[name] - at)
+        return bytes(self.c)
+
+
+BEQ, BNE, BRA, BSR, BCC, BCS, BHI, BLS, BMI = 0x67, 0x66, 0x60, 0x61, 0x64, 0x65, 0x62, 0x63, 0x6B
+
+# hooks: (address, original bytes, label of our routine, jsr or jmp, total bytes replaced)
+PU_HOOKS = (
+    (0x0144D8, '3038e96e8078ee82', 'frame', 'jmp'),     # play-mode frame: move.w $E96E,d0 / or.w $EE82,d0
+    (0x010D9A, '3c38da043e38db04', 'hitbox', 'jsr'),    # head hitbox: move.w $DA04,d6 / move.w $DB04,d7
+    (0x010E6A, '0c780020ee0a', 'headdmg', 'jsr'),       # head damage: cmpi.w #$20,$EE0A
+    (0x0110FA, '0c780020ee0a', 'headdmg', 'jsr'),       # (second copy)
+    (0x0109F2, '102c12464a78d202', 'hurt', 'jsr'),      # contact damage: move.b $1246(a4),d0 / tst.w $D202
+    (0x010A2C, '0c7801a0ee0a', 'knock', 'jsr'),         # after the hit sound: cmpi.w #$1A0,$EE0A
+    (0x015DBC, '5978d200670000826b00007e', 'pit', 'pit'),  # falling into a pit: subq.w #4,$D200 /
+)                                                        #  beq.w $15E44 / bmi.w $15E44
 
 
 def patch_new_pickups(rom):
-    claim(rom, NEW_PICKUPS, 0x80, 'new pickups')
+    claim(rom, NEW_PICKUPS, 0x5C0, 'new pickups')
     if bytes(rom[BEAN_COLLECT:BEAN_COLLECT + 6]) != bytes.fromhex('31fc0040e9cc'):
         raise ValueError('jelly bean code at $%06X is not the original' % BEAN_COLLECT)
     if struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] != BEAN_HANDLER:
         raise ValueError('jelly bean handler is not the original')
     if bytes(rom[BEAN_PIECE:BEAN_PIECE + 6]) != bytes.fromhex('050143a4f8f8'):
         raise ValueError('jelly bean sprite is not the original')
-    base = NEW_PICKUPS
-    c = bytearray()
-    # upside-down bean sprite piece (vertical flip, bit 12) and its script
-    piece = base + len(c)
-    c += bytes(rom[BEAN_PIECE:BEAN_PIECE + 6])
-    struct.pack_into('>H', c, 2, 0x43A4 | 0x1000)
-    script = base + len(c)
-    c += struct.pack('>BBh', 0, 0xFF, piece - (script + 2))
-    c += struct.pack('>BBh', 0, 0, script - (script + 6))       # loop
-    # handler wrapper: a marked bean still on the original script gets ours
-    handler = base + len(c)
-    c += bytes.fromhex('082e0006d303'      # btst #6,-$2CFD(a6)   (variant?)
-                       '6724'              # beq.s go
-                       '202edc00')         # move.l -$2400(a6),d0 (current script)
-    c += bytes.fromhex('0c80') + struct.pack('>I', BEAN_SCRIPTS[0]) + bytes.fromhex('6708')   # beq.s swap
-    c += bytes.fromhex('0c80') + struct.pack('>I', BEAN_SCRIPTS[1]) + bytes.fromhex('6610')   # bne.s go
-    c += bytes.fromhex('2d7c') + struct.pack('>I', script) + bytes.fromhex('dc00')            # swap: script
-    c += bytes.fromhex('2d7c') + struct.pack('>I', piece) + bytes.fromhex('dd00')             #       sprite
-    c += struct.pack('>HI', 0x4EF9, BEAN_HANDLER)                                             # go
-    # collect: normal beans heal as before; the upside-down bean hurts
-    collect = base + len(c)
-    c += bytes.fromhex('082e0006d303'      # btst #6,-$2CFD(a6)
-                       '660c'              # bne.s bad
-                       '31fc0040e9cc')     # move.w #$40,$E9CC   (original)
-    c += struct.pack('>HI', 0x4EF9, BEAN_COLLECT_REST)
-    c += bytes.fromhex('426ed000'          # bad: clr.w -$3000(a6)   (remove it)
-                       '103c0021')         # move.b #$21,d0          (the hit sound)
-    c += struct.pack('>HI', 0x4EB9, 0x0118B6)                                                # jsr play sound
-    c += bytes.fromhex('04780010d200'      # subi.w #$10,$D200
-                       '6e06'              # bgt.s done
-                       '31fc0001d200'      # move.w #1,$D200
-                       '4e75')             # done: rts
-    assert len(c) <= 0x80
-    rom[NEW_PICKUPS:NEW_PICKUPS + len(c)] = c
-    rom[HANDLERS + BEAN:HANDLERS + BEAN + 4] = struct.pack('>I', handler)
-    rom[BEAN_COLLECT:BEAN_COLLECT + 6] = struct.pack('>HI', 0x4EF9, collect)
+    for at, orig, _, _ in PU_HOOKS:
+        if bytes(rom[at:at + len(orig) // 2]) != bytes.fromhex(orig):
+            raise ValueError('code at $%06X is not the original' % at)
+    patch_odd_health(rom)                  # heavy beans halve damage, so health can be odd
+    a = Asm(NEW_PICKUPS)
+    bean = lambda attr, y, x, n: struct.pack('>BBHbb', 5, n, attr, y, x)
+    one = lambda attr, y, x, n: struct.pack('>BBHbb', 0, n, attr, y, x)
+    def pieces(kind, pri):
+        p = 0x8000 if pri else 0
+        if kind == 4:                      # upside-down
+            return bean(p | 0x5000 | BEAN_TILE, -8, -8, 1)
+        if kind == 1:                      # bean + star
+            return one(p | 0x4000 | STAR_TILE, -14, 2, 2) + bean(p | 0x4000 | BEAN_TILE, -8, -8, 2)
+        if kind == 2:                      # bean + fireball
+            return one(p | 0x4000 | FIRE_TILE, -14, 2, 2) + bean(p | 0x4000 | BEAN_TILE, -8, -8, 2)
+        return bean(p | 0x4000 | BEAN_TILE, -12, -11, 2) + bean(p | 0x4000 | BEAN_TILE, -5, -5, 2)
+    for name, kinds, pri in (('var', (1, 2, 3, 4), False), ('hud', (1, 2, 3), True)):
+        for k in kinds:
+            a.label('%spiece%d' % (name, k)); a.c += pieces(k, pri)
+            a.label('%sscript%d' % (name, k))
+            a.w(0x00FF, a.labels['%spiece%d' % (name, k)] - (len(a) + 2))
+            a.w(0x0000, a.labels['%sscript%d' % (name, k)] - (len(a) + 2))     # loop
+        a.label(name + 'table')            # (script, piece) per kind, from kind 1
+        for k in kinds:
+            a.l(a.addr('%sscript%d' % (name, k))); a.l(a.addr('%spiece%d' % (name, k)))
+
+    # ---- bean handler: the icon, or a variant still on the bean's own script gets its look
+    a.label('handler')
+    a.h('082e0007d303')                    # btst #7,-$2CFD(a6)
+    a.b(BNE, 'hud')
+    a.h('7000 102ed303 e808 02400007')     # moveq #0,d0 / move.b -$2CFD(a6),d0 / lsr.b #4,d0 / andi.w #7,d0
+    a.b(BEQ, 'go')
+    a.h('0c400004'); a.b(0x63, 'v_ok')     # cmpi.w #4,d0 / bls v_ok
+    a.h('7004')                            # moveq #4,d0 (upside-down + anything)
+    a.label('v_ok')
+    a.h('222edc00')                        # move.l -$2400(a6),d1
+    a.w(0x0C81); a.l(BEAN_SCRIPTS[0]); a.b(BEQ, 'swap')
+    a.w(0x0C81); a.l(BEAN_SCRIPTS[1]); a.b(BNE, 'go')
+    a.label('swap')
+    a.h('e748')                            # lsl.w #3,d0
+    a.lea('vartable')                      # lea vartable(pc),a0
+    a.h('5148')                            # subq.w #8,a0
+    a.h('2d700000dc00 2d700004dd00')       # move.l 0(a0,d0.w),-$2400(a6) / move.l 4(a0,d0.w),-$2300(a6)
+    a.label('go')
+    a.jmp(BEAN_HANDLER)
+
+    # ---- the icon: fixed on screen beside the spotlight, blinks in the last 3 seconds
+    a.label('hud')
+    a.h('3d7c9109d000')                    # move.w #$9109,-$3000(a6)  (screen-fixed, untouchable)
+    a.h('426ed102')                        # clr.w -$2EFE(a6)
+    a.w(0x2D7C); a.l(HUD_X << 16); a.w(0xD400)            # move.l #x,-$2C00(a6)
+    a.w(0x2D7C); a.l(HUD_Y << 16); a.w(0xD500)            # move.l #y,-$2B00(a6)
+    a.w(0x0C78, PU_WARN, PU_TIMER); a.b(BCC, 'hud_show')  # cmpi.w #warn,timer / bcc show
+    a.h('08380003e801'); a.b(BEQ, 'hud_show')             # btst #3,$E801 / beq show
+    a.w(0x2D7C); a.l(HUD_HIDE_Y << 16); a.w(0xD500)       # blink: off screen
+    a.label('hud_show')
+    a.h('7003'); a.w(0xC038, PU_KIND)                     # moveq #3,d0 / and.b kind,d0
+    a.b(BEQ, 'hud_rts')
+    a.h('e748')                                           # lsl.w #3,d0
+    a.lea('hudtable'); a.h('5148')                        # lea hudtable-8(pc),a0
+    a.h('22300000 b2aedc00'); a.b(BEQ, 'hud_rts')        # move.l 0(a0,d0.w),d1 / cmp.l -$2400(a6),d1
+    a.h('2d41dc00 2d700004dd00 3d7c0001d300')            # new script, its piece, timer 1
+    a.label('hud_rts')
+    a.h('4e75')
+
+    # ---- collected: upside-down hurts, powerups start (no healing), plain beans heal
+    a.label('collect')
+    a.h('122ed303 08010006'); a.b(BNE, 'bad')             # move.b -$2CFD(a6),d1 / btst #6,d1
+    a.h('e809 02010003'); a.b(BEQ, 'heal')                # lsr.b #4,d1 / andi.b #3,d1
+    a.w(0x11C1, PU_KIND)                                  # move.b d1,kind  (also: double jump unused)
+    a.w(0x31FC, PU_TIME, PU_TIMER)                        # move.w #time,timer
+    a.h('426ed000 103c0020')                              # clr.w -$3000(a6) / move.b #$20,d0 (bean sound)
+    a.jmp(0x0118B6)                                       # no healing
+    a.label('heal')
+    a.h('31fc0040e9cc')                                   # move.w #$40,$E9CC (original)
+    a.jmp(BEAN_COLLECT_REST)
+    a.label('bad')
+    a.h('426ed000 103c0021')                              # clr.w -$3000(a6) / move.b #$21,d0 (hit sound)
+    a.jsr(0x0118B6)
+    a.h('04780010d200'); a.b(0x6E, 'bad_rts')             # subi.w #$10,$D200 / bgt
+    a.h('31fc0001d200')                                   # move.w #1,$D200
+    a.label('bad_rts')
+    a.h('4e75')
+
+    # ---- every frame of play: count down, keep the icon, double jump
+    a.label('frame')
+    a.h('48e7c0b2')                        # movem.l d0-d1/a0/a2-a3/a6,-(sp)
+    a.h('4a78e806'); a.b(BNE, 'f_out')     # tst.w $E806 (paused)
+    a.h('7003'); a.w(0xC038, PU_KIND); a.b(BEQ, 'f_nohud')
+    a.h('0c780008e600'); a.b(BEQ, 'f_end')  # cmpi.w #8,$E600 (dying)
+    a.w(0x5378, PU_TIMER); a.b(BHI, 'f_on')  # subq.w #1,timer / bhi on
+    a.label('f_end')
+    a.w(0x4278, PU_TIMER); a.w(0x4238, PU_KIND)           # clr.w timer / clr.b kind
+    a.label('f_nohud')                     # no powerup: remove the icon
+    a.b(BSR, 'f_hud'); a.b(BNE, 'f_out')
+    a.h('426ed000'); a.w(0x4238, PU_HUD); a.b(BRA, 'f_out')
+    a.label('f_on')
+    a.b(BSR, 'f_hud'); a.b(BEQ, 'f_dj')    # icon there?
+    a.h('3c7c00ec')                        # movea.w #$EC,a6  (free slot, below explosion debris)
+    a.label('f_find')
+    a.h('4a6ed000'); a.b(BEQ, 'f_spawn')
+    a.h('594e bcfc0040'); a.b(BCC, 'f_find')
+    a.b(BRA, 'f_dj')
+    a.label('f_spawn')
+    a.h('367c0128'); a.jsr(SPAWN)          # movea.w #$128,a3 / jsr spawn
+    a.h('1d7c0080d303 3d7c9109d000')       # move.b #$80,-$2CFD(a6) / move.w #$9109,-$3000(a6)
+    a.w(0x2D7C); a.l(HUD_X << 16); a.w(0xD400)
+    a.w(0x2D7C); a.l(HUD_HIDE_Y << 16); a.w(0xD500)
+    a.h('300e e448'); a.w(0x11C0, PU_HUD)  # move.w a6,d0 / lsr.w #2,d0 / move.b d0,hud
+    a.label('f_dj')
+    a.h('7003'); a.w(0xC038, PU_KIND); a.h('0c000001'); a.b(BNE, 'f_out')
+    a.h('0c780008d102'); a.b(BEQ, 'f_air')  # cmpi.w #8,$D102 (Headdy in the air)
+    a.w(0x08B8, 7, PU_KIND); a.b(BRA, 'f_out')            # bclr #7,kind (landed: jump again)
+    a.label('f_air')
+    a.h('1038ffda 0138e80b'); a.b(BEQ, 'f_out')           # move.b $FFDA,d0 / btst d0,$E80B (jump pressed this frame)
+    a.w(0x08F8, 7, PU_KIND); a.b(BNE, 'f_out')            # bset #7,kind (used already?)
+    a.h('21f8ee18b6ac 21f8ee18d700')                      # move.l $EE18,$B6AC / ,$D700 (jump speed: physics, sprite)
+    a.h('48e7fffe 7008'); a.jsr(0x0180AE)                 # jump animation
+    a.h('103c00d7'); a.jsr(0x0118B6)                      # jump sound
+    a.h('4cdf7fff')
+    a.label('f_out')
+    a.h('4cdf4d03')                        # movem.l (sp)+,...
+    a.h('3038e96e 8078ee82')               # original: move.w $E96E,d0 / or.w $EE82,d0
+    a.jmp(PLAY_HANDLER + 8)
+    # f_hud: a6 = the icon's slot; Z set if it's there
+    a.label('f_hud')
+    a.h('7000'); a.w(0x1038, PU_HUD); a.b(BEQ, 'fh_no')   # moveq #0,d0 / move.b hud,d0
+    a.h('e548 3c40')                       # lsl.w #2,d0 / movea.w d0,a6
+    a.h('4a6ed000'); a.b(BEQ, 'fh_no')
+    a.h('0c6e0128d100'); a.b(BNE, 'fh_no')
+    a.h('082e0007d303'); a.b(BEQ, 'fh_no')
+    a.h('7000 4e75')                       # moveq #0,d0 (Z) / rts
+    a.label('fh_no')
+    a.h('7001 4e75')                       # moveq #1,d0 (NZ) / rts
+
+    # ---- power: bigger head hitbox, double head damage
+    a.label('hitbox')
+    a.h('3c38da04 3e38db04')
+    a.h('2f00 7003'); a.w(0xC038, PU_KIND); a.h('0c000002'); a.b(BNE, 'hb_out')
+    a.h('3006 e248 dc40 3007 e248 de40')  # d6 += d6/2, d7 += d7/2
+    a.label('hb_out')
+    a.h('201f 4e75')
+    a.label('headdmg')
+    a.h('2f00 7003'); a.w(0xC038, PU_KIND); a.h('0c000002'); a.b(BNE, 'hd_out')
+    a.h('7001 0c780020ee0a'); a.b(BNE, 'hd_1')            # base damage of the worn head
+    a.h('7002')
+    a.label('hd_1')
+    a.h('0c780120ee0a'); a.b(BNE, 'hd_2')
+    a.h('7008')
+    a.label('hd_2')
+    a.h('b02ed201'); a.b(BCC, 'hd_out')                   # cmp.b -$2DFF(a6),d0: only if HP > base
+    a.h('912ed201')                                       # sub.b d0,-$2DFF(a6) (the extra hit)
+    a.label('hd_out')
+    a.h('201f 0c780020ee0a 4e75')
+    # ---- heavy: half damage, no knockback
+    a.label('hurt')
+    a.h('102c1246')                        # move.b $1246(a4),d0
+    a.w(0x0C38, 0x0003, PU_KIND)           # cmpi.b #3,kind (heavy, double jump bit is clear)
+    a.b(BNE, 'hu_out')
+    a.h('e208')                            # lsr.b #1,d0
+    a.label('hu_out')
+    a.h('4a78d202 4e75')                   # tst.w $D202 / rts
+    a.label('knock')
+    a.w(0x0C38, 0x0003, PU_KIND); a.b(BNE, 'kn_out')
+    a.h('588f 4e75')                       # addq.l #4,sp / rts (leave the hit routine: no knockback)
+    a.label('kn_out')
+    a.h('0c7801a0ee0a 4e75')
+    a.label('pit')                         # falling into a pit costs 4 health (heavy: 2)
+    a.h('2f00 7004'); a.w(0x0C38, 0x0003, PU_KIND); a.b(BNE, 'pit_sub')
+    a.h('7002')
+    a.label('pit_sub')
+    a.h('9178d200 4cdf0001 4e75')         # sub.w d0,$D200 / movem.l (sp)+,d0 (keeps the flags) / rts
+    code = a.done()
+    assert len(code) <= 0x5C0, len(code)
+    rom[NEW_PICKUPS:NEW_PICKUPS + len(code)] = code
+    rom[HANDLERS + BEAN:HANDLERS + BEAN + 4] = struct.pack('>I', a.addr('handler'))
+    rom[BEAN_COLLECT:BEAN_COLLECT + 6] = struct.pack('>HI', 0x4EF9, a.addr('collect'))
+    for at, orig, name, how in PU_HOOKS:
+        n = len(orig) // 2
+        if how == 'pit':                   # jsr pit / ble.w $15E44 / nop
+            rom[at:at + n] = struct.pack('>HIHhH', 0x4EB9, a.addr(name), 0x6F00, 0x015E44 - (at + 8), 0x4E71)
+            continue
+        rom[at:at + n] = struct.pack('>HI', 0x4EF9 if how == 'jmp' else 0x4EB9, a.addr(name)) + b'\x4e\x71' * ((n - 6) // 2)
+    return a.labels
 
 
 # Head Hunter: the unused head $180 (goggles and headset). The game already treats it
@@ -832,8 +1050,8 @@ def symbol_source(rom, head):
 
 def patch_head_hunter(rom):
     claim(rom, HH_FIX, 0x200, 'Head Hunter')
-    # with the new pickups, some drops are upside-down beans
-    bad_beans = NEW_PICKUPS <= struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] < NEW_PICKUPS + 0x80
+    # with the new pickups, some drops are upside-down or powerup beans
+    bad_beans = NEW_PICKUPS <= struct.unpack('>I', rom[HANDLERS + BEAN:HANDLERS + BEAN + 4])[0] < NEW_PICKUPS + 0x5C0
     if bytes(rom[SCORE:SCORE + 16]) != bytes.fromhex('386ed1004240102c1247d178e8f04e75'):
         raise ValueError('score code at $%06X is not the original' % SCORE)
     c = bytearray()
@@ -891,13 +1109,22 @@ def patch_head_hunter(rom):
     c += struct.pack('>HI', 0x4EB9, SPAWN) # jsr spawn (type a3 in slot a6)
     c += bytes.fromhex('2d69d400d400'      # move.l -$2C00(a1),-$2C00(a6)   x
                        '2d69d500d500')     # move.l -$2B00(a1),-$2B00(a6)   y
-    if bad_beans:                          # a quarter of the jelly beans are upside-down
+    if bad_beans:                          # jelly beans: 4 in 16 upside-down, 1 in 16 each powerup
         c += bytes.fromhex('0c6e0128d100') # cmpi.w #$128,-$2F00(a6)
         short(0x66, 'pop')
         c += struct.pack('>HI', 0x4EB9, RANDOM)
-        c += bytes.fromhex('02400003')     # andi.w #3,d0
-        short(0x66, 'pop')
+        c += bytes.fromhex('0240000f'      # andi.w #$F,d0
+                           '0c000003')     # cmpi.b #3,d0
+        short(0x62, 'pu')                  # bhi.s pu
         c += bytes.fromhex('002e0040d303') # ori.b #$40,-$2CFD(a6)
+        short(0x60, 'pop')
+        labels['pu'] = len(c)
+        c += bytes.fromhex('5900'          # subq.b #4,d0            (4-6: powerup 0-2)
+                           '0c000002')     # cmpi.b #2,d0
+        short(0x62, 'pop')                 # 7-15: plain bean
+        c += bytes.fromhex('5200'          # addq.b #1,d0
+                           'e908'          # lsl.b #4,d0
+                           '812ed303')     # or.b d0,-$2CFD(a6)
     labels['pop'] = len(c)
     c += bytes.fromhex('4cdf4b07')         # movem.l (sp)+,d0-d2/a0-a1/a3/a6
     labels['done'] = len(c)
@@ -951,11 +1178,20 @@ def patch_head_hunter(rom):
 
 def place_new_pickups(rom, rng):
     beans = [(s, x, e) for s, x, e in find_placements(rom, (BEAN,)) if rom[e + 5] == 0]
-    chosen = rng.sample(beans, max(1, len(beans) // 3))
-    log = ['== New pickups (upside-down bean: takes half your health)']
-    for s, x, e in sorted(chosen):
-        rom[e + 5] |= VARIANT
-        log.append('%-6s X=%-5d upside-down bean' % (STAGE_NAMES.get(s, '$%02X' % s), x))
+    rng.shuffle(beans)
+    n = len(beans) // 4                    # a quarter upside-down, a quarter powerups
+    kinds = {e: 'bad' for s, x, e in beans[:n]}
+    for i, (s, x, e) in enumerate(beans[n:2 * n]):
+        kinds[e] = 1 + i % 3
+    log = ['== New pickups (upside-down bean: takes half your health; powerup beans: '
+           '15 seconds of double jump, power or heavy)']
+    for s, x, e in sorted(beans):
+        k = kinds.get(e)
+        if k is None:
+            continue
+        rom[e + 5] |= VARIANT if k == 'bad' else POWERUP[k]
+        log.append('%-6s X=%-5d %s' % (STAGE_NAMES.get(s, '$%02X' % s), x,
+                                       'upside-down bean' if k == 'bad' else POWERUP_NAMES[k]))
     patch_new_pickups(rom)
     return log
 
@@ -973,6 +1209,8 @@ HP_COLOURS = 0x015CC6
 
 
 def patch_odd_health(rom):
+    if bytes(rom[0x0158CC:0x0158D2]) == struct.pack('>HI', 0x4EB9, HEALTH_FIX):
+        return                             # already there (heavy beans need it too)
     claim(rom, HEALTH_FIX, 0x40, 'odd health fix')
     c = bytearray()
     colour = HEALTH_FIX

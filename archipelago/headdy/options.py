@@ -92,7 +92,11 @@ class PickupShuffle(Choice):
 
 
 class NewPickups(Toggle):
-    """Turn some jelly beans into new pickups. Upside-down bean: takes half your health (never below 1)."""
+    """
+    Turn some jelly beans into new pickups. Upside-down bean: takes half your health (never below 1).
+    Powerup beans give 15 seconds of double jump, power (double head damage, bigger head
+    hitbox) or heavy (half damage, no knockback).
+    """
     display_name = "New Pickups"
 
 
