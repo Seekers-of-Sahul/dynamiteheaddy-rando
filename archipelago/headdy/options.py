@@ -170,7 +170,7 @@ class MeanBeanTrapWeight(Range):
 class HeadTripTrapWeight(Range):
     """
     How likely a trap is a Head Trip Trap: Head Trip goes on your head for its usual time. It waits while you
-    wear a head you need (Ticker, Liberty Head, Bomb, flying heads) and in act 6.
+    wear a head you need (Ticker, Liberty Head, Pin, Bomb, flying heads) and in act 6.
     """
     display_name = "Head Trip Trap Weight"
     range_start = 0

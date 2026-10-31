@@ -250,7 +250,7 @@ Dynamite Headdy:
 
   head_trip_trap_weight:
     # How likely a trap is a Head Trip Trap: Head Trip goes on your head for its usual time.
-    # It waits while you wear a head you need (Ticker, Liberty Head, Bomb, flying heads) and in act 6.
+    # It waits while you wear a head you need (Ticker, Liberty Head, Pin, Bomb, flying heads) and in act 6.
     # Minimum value is 0
     # Maximum value is 10
     1: 50

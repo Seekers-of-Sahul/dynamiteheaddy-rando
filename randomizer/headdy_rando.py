@@ -48,7 +48,7 @@ OPTIONS = {
     'bonus_logic':   {'default': True, 'type': 'bool',
                       'desc': 'Guarantee the heads needed for Secret Bonus Points.'},
     'pickup_logic':  {'default': True, 'type': 'bool',
-                      'desc': 'Guarantee the heads needed to reach pickups (Vacuum in two Headcases in 4-1).'},
+                      'desc': 'Guarantee the heads needed to reach pickups (Vacuum in 4-1, Slammer in 4-2 and 4-3, Pin in 9-1).'},
     'headtrip':      {'default': True, 'type': 'bool',
                       'desc': 'Allow Head Trip (a huge, heavy head that makes you slow and easy to stomp) in Headcases.'},
     'boss_bomb':     {'default': True, 'type': 'bool',
@@ -62,8 +62,8 @@ OPTIONS = {
                               'attacks like the normal head, and defeated enemies sometimes '
                               'drop a pickup (never bosses).'},
     'stage_order':   {'default': False, 'type': 'bool',
-                      'desc': 'Play the acts in a random order: 1-1 first, 9-3 last, 6-1 to 6-4 '
-                              'together and in order. (Not with the stage-select hub.)'},
+                      'desc': 'Play the acts in a random order: 1-1 first, 9-3 last. '
+                              '(Not with the stage-select hub.)'},
     'pickups':       {'default': 'off', 'choices': ['off', 'shuffle', 'random'],
                       'desc': 'shuffle: jelly beans, 500-point items and 1-ups swap spots. '
                               'random: every spot gets a random pickup (45% bean, 45% 500 '
@@ -168,6 +168,11 @@ BONUS = {
 PICKUP_REQS = {
     8:  [(0x140,)],       # 4-1 (X=2416, 3040): Vacuum pulls in 5 pickups that can't be reached otherwise
     19: [(0x140,)],       # 4-1 (X=5008): the same for more pickups further on
+    31: [(SLAMMER,)],     # 4-3 (X=544): the two 500-point items at X=672 need Slammer
+    39: [(PIN,)],         # 9-1 (X=1309, the top Headcase): Pin for the topmost pickups
+    28: [(SLAMMER,)],     # 4-2: every Headcase, for the pickups behind hammer blocks
+    29: [(SLAMMER,)],     #  (also required by bonus logic)
+    30: [(SLAMMER,)],
 }
 # Stages where flying heads must not appear (play-testing): 4-1 (the camera
 # scrolls on its own at the end and Headdy is lost), 4-3 (same when carried into
@@ -211,6 +216,28 @@ FLY_FIX = 0x1A1F00            # free space for the flying-head wrapper
 FLY_TIMER = 0x400             # same as most heads
 
 
+# Stage load / respawn ($007EB2) keeps a flying head (for 6-2..6-4) unless the stage
+# is 5-4, 6-1 or 7. Keep it only in 6-2..6-4; clear it everywhere else. Needed by the
+# flying heads (a Headcase one carried into the next stage) and by the stage order (a
+# 6-x flying head carried into a stage that isn't act 6).
+FLY_RESET = 0x1D5F00          # free space after the Archipelago player name
+
+
+def patch_flying_head_reset(rom):
+    if bytes(rom[0x007EB2:0x007EB8]) == struct.pack('>HI', 0x4EF9, FLY_RESET):
+        return                    # already there
+    if bytes(rom[0x007EB2:0x007EB8]) != bytes.fromhex('0c780260ee0a'):
+        raise ValueError('stage-load head code at $007EB2 is not the original')
+    claim(rom, FLY_RESET, 0x20, 'flying-head reset')
+    c = bytes.fromhex('0c780052e8aa' '6514'                # cmpi.w #$52,$E8AA / bcs.s clear
+                      '0c780056e8aa' '620c'                # cmpi.w #$56,$E8AA / bhi.s clear
+                      '0c780260ee0a')                      # cmpi.w #$260,$EE0A (replaced insn)
+    c += struct.pack('>HI', 0x4EF9, 0x007EB8)               # jmp $007EB8 (beq on these flags)
+    c += struct.pack('>HI', 0x4EF9, 0x007F14)               # clear: jmp $007F14 (normal reset)
+    rom[FLY_RESET:FLY_RESET + len(c)] = c
+    rom[0x007EB2:0x007EB8] = struct.pack('>HI', 0x4EF9, FLY_RESET)
+
+
 def patch_flying_heads(rom):
     """Flying heads picked from a Headcase outside 6-1 get the normal head timer.
 
@@ -233,18 +260,8 @@ def patch_flying_heads(rom):
     c += bytes.fromhex('0c780050e8aa6706')                  # cmpi.w #$50,$E8AA / beq.s +6
     c += struct.pack('>HHH', 0x31FC, FLY_TIMER, 0xE8D8)      # move.w #timer,$E8D8
     c += bytes.fromhex('4e75')                              # rts
-    # Stage load / respawn ($007EB2) keeps a flying head (for 6-2..6-4) unless the
-    # stage is 5-4, 6-1 or 7. Keep it only in 6-2..6-4; clear it everywhere else.
-    keep = FLY_FIX + len(c)
-    c += bytes.fromhex('0c780052e8aa' '6514'               # cmpi.w #$52,$E8AA / bcs.s clear
-                       '0c780056e8aa' '620c'               # cmpi.w #$56,$E8AA / bhi.s clear
-                       '0c780260ee0a')                     # cmpi.w #$260,$EE0A (replaced insn)
-    c += struct.pack('>HI', 0x4EF9, 0x007EB8)               # jmp $007EB8 (beq on these flags)
-    c += struct.pack('>HI', 0x4EF9, 0x007F14)               # clear: jmp $007F14 (normal reset)
-    if bytes(rom[0x007EB2:0x007EB8]) != bytes.fromhex('0c780260ee0a'):
-        raise ValueError('stage-load head code at $007EB2 is not the original')
-    rom[0x007EB2:0x007EB8] = struct.pack('>HI', 0x4EF9, keep)
     rom[FLY_FIX:FLY_FIX + len(c)] = c
+    patch_flying_head_reset(rom)
     for head, a in entries.items():
         t = 0x011312 + (head >> 3)
         if struct.unpack('>I', rom[t:t + 4])[0] not in (0x01155E, 0x011572, 0x01157A):
@@ -660,17 +677,16 @@ def randomize_stats(rom, rng, o):
 NEXT_STAGE = 0x00672A
 STAGE_ORDER_FIX = 0x05B3C0 - 0x20          # end of the free space after the new pickups
 FIRST_ACT, LAST_ACT = 0x00, 0x30           # 1-1 and 9-3 stay put
-ACT_6 = [0x50, 0x52, 0x54, 0x56]           # one block: the flying head carries through
 
 
 def shuffle_stage_order(rom, rng):
     names = {sid: n for n, sid in ACTS}
     for sid, nxt in zip([sid for _, sid in ACTS], [sid for _, sid in ACTS][1:]):
         assert w16(rom, NEXT_STAGE + sid) == nxt, 'next-stage table is not the original'
-    blocks = [[sid] for _, sid in ACTS if sid not in (FIRST_ACT, LAST_ACT) and sid not in ACT_6]
-    blocks.append(ACT_6)
-    rng.shuffle(blocks)
-    order = [FIRST_ACT] + [sid for b in blocks for sid in b] + [LAST_ACT]
+    middle = [sid for _, sid in ACTS if sid not in (FIRST_ACT, LAST_ACT)]
+    rng.shuffle(middle)
+    order = [FIRST_ACT] + middle + [LAST_ACT]
+    patch_flying_head_reset(rom)      # a 6-x flying head stays in act 6
     for a, b in zip(order, order[1:]):
         put16(rom, NEXT_STAGE + a, b)
     # 5-3's own exit: addq.w #2,$E8AA / addq.w #2,$E8C2 -> jsr fix / nop

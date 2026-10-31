@@ -31,7 +31,7 @@ number of Secret Bonus Points and beat 9-3.
 - Traps, if `trap_percentage` is above 0: **Mean Bean Trap** (lose 16 health, never below 2) and
   **Head Trip Trap** (Head Trip goes on your head for its usual time). Traps wait while the game is
   paused, while you're dying, and in the stage select, tutorial rooms and basketball; a Head Trip Trap
-  also waits in act 6 and while you wear Ticker, Liberty Head, Bomb or a flying head.
+  also waits in act 6 and while you wear Ticker, Liberty Head, Pin, Bomb or a flying head.
 
 ## Does it support DeathLink?
 

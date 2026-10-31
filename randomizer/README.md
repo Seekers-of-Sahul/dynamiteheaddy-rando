@@ -70,7 +70,7 @@ python headdy_rando.py --help
 | `--headcases chaos` | Anything goes, but heads needed to finish a stage are still guaranteed. |
 | `--headcases off` | Headcases stay vanilla. |
 | `--no-bonus-logic` | Don't guarantee the heads needed for Secret Bonus Points. Some may become impossible. |
-| `--no-pickup-logic` | Don't guarantee the heads needed to reach pickups (Vacuum in sets 8 and 19, both in 4-1, which pulls in pickups you can't reach otherwise). |
+| `--no-pickup-logic` | Don't guarantee the heads needed to reach pickups (Vacuum in sets 8 and 19 in 4-1, which pulls in pickups you can't reach otherwise, Slammer in every 4-2 Headcase and in set 31 in 4-3, and Pin in set 39, the top Headcase in 9-1). |
 | `--no-headtrip` | Never put Head Trip in a Headcase. It's a head to avoid: your head becomes so big and heavy that it's hard to move around, and enemies easily stomp on you. |
 | `--no-boss-bomb` | Don't guarantee Bomb Head at the act 7 boss. |
 | `--flying-heads` | Allow Rocket, Air and Feather Head in normal Headcases (see below). |
@@ -135,7 +135,7 @@ Headdy has 32 health, and most hits normally take 2.
 
 | Option | What it does |
 | --- | --- |
-| `--stage-order` | Play the acts in a random order. 1-1 stays first and 9-3 last (the ending and the secret door still follow it); 6-1 to 6-4 stay together and in order, because the flying head carries through them. The 2-1 tutorial rooms still return to 2-1, basketball returns to the stage you came from, and a continue puts you back on the act you were on. Each curtain names the stage you're about to play. End-of-scene tallies appear after the acts that originally ended a scene, wherever those land. Not used with the stage-select hub, which picks the next stage itself. |
+| `--stage-order` | Play the acts in a random order. 1-1 stays first and 9-3 last (the ending and the secret door still follow it). A flying head from act 6 is cleared when you leave act 6, so it can't follow you into another stage. The 2-1 tutorial rooms still return to 2-1, basketball returns to the stage you came from, and a continue puts you back on the act you were on. Each curtain names the stage you're about to play. End-of-scene tallies appear after the acts that originally ended a scene, wherever those land. Not used with the stage-select hub, which picks the next stage itself. |
 
 ### Pickups
 

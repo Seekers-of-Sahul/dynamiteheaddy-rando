@@ -85,8 +85,9 @@ HEAD_SETUP = 0x011312         # Headcase pickup, step 2: setup routine per head 
 NO_DEATH_STAGES = (0x08, 0x0A, 0x44)   # tutorial rooms and basketball: no dying there
 HEAD_TRIP = 0x1A0
 # A Head Trip trap waits while Headdy wears one of these: Ticker (time stop), Liberty
-# (basketball), Empty, Bomb (act 7 boss) and the flying heads; and in act 6 (flying).
-TRAP_WAIT_HEADS = (0x060, 0x0C0, 0x0E0, 0x120, 0x220, 0x240, 0x260)
+# (basketball), Empty, Pin (lasts until dropped some other way, like the flying heads),
+# Bomb (act 7 boss) and the flying heads; and in act 6 (flying).
+TRAP_WAIT_HEADS = (0x060, 0x0C0, 0x0E0, 0x100, 0x120, 0x220, 0x240, 0x260)
 TRAP_WAIT_STAGES = NO_DEATH_STAGES + (0x50, 0x52, 0x54, 0x56)
 BB_DIGITS = 0xFFF8            # backup of the 4 secret digits, one nibble each ($F = unknown)
 E8F6 = 0xE8F6                 # bonus points taken in the current scene (game's own)
@@ -94,6 +95,8 @@ E8AA, E8C4, E80A, E80B, E806, E8FE = 0xE8AA, 0xE8C4, 0xE80A, 0xE80B, 0xE806, 0xE
 STAGE_LIST = 0x006786
 SOUND = 0x0118B6
 TO_TITLE = 0x0146F0
+DEMO_RET = 0x013150           # return address when the title's idle timer starts the demo
+DEMO_MODE = 0x28              # game mode while the demo's stage loads
 SS_INIT = 0x013428            # original stage select setup (ends with rts)
 SS_REDRAW = 0x01359C          # draws the stage number for the cursor (ends with rts)
 TEXT_DRAW = 0x01232C          # queue a text block (a0) for drawing; returns a2 = end of queued line
@@ -233,6 +236,14 @@ def build(ap=False):
 
     # ss_start: Start pressed in the stage select
     a.label('ss_start')
+    # The title's idle timer starts the demo through this same code ($01314C: bsr $0134CC,
+    # return address $013150): do exactly what the original does then.
+    a.w(0x0CAF); a.l(DEMO_RET); a.w(0x0004)     # cmpi.l #$13150,4(sp)
+    a.br(BNE, 'st_menu')
+    a.w(0x3038, E8C4)                           # move.w cursor,d0 (original code)
+    a.w(0x41F9); a.l(STAGE_LIST)                # lea stage list,a0 (original code)
+    a.w(0x4E75)                                 # rts
+    a.label('st_menu')
     a.br(BSR, 'ensure_init')
     a.w(0x3038, E8C4)                           # move.w cursor,d0
     a.br(BSR, 'is_unlocked')
@@ -246,6 +257,8 @@ def build(ap=False):
 
     # hub_stage_load: start of stage loading (mode $1C, step 0)
     a.label('hub_stage_load')
+    a.w(0x0C78, DEMO_MODE, 0xE802)              # cmpi.w #$28,$E802 (loading the title demo)
+    a.br(BEQ, 'hl_cont')                        #  -> not a real stage: leave it alone
     a.br(BSR, 'ensure_init')
     a.w(0x3038, 0xE8C2)                         # move.w $E8C2,d0  (the stage the loader will actually use)
     a.w(0x1838, LASTSTAGE)                      # move.b LASTSTAGE,d4  previous stage
