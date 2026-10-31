@@ -16,8 +16,10 @@ What it does:
      $00A610 is entered with d0 = 2 x bonus ID; its first instruction is
      replaced by TRAP #15, whose vector (unused, pointed at reset) now leads
      to a handler that does the original work and sets the bit.
-  5. The stage select shows "nn OF 39 SBPS" under the stage number (the
-     number of bits set in the bonus mask; change SBP_TOTAL to change 39).
+  5. Under the stage number, the stage select shows the stage under the cursor:
+     "CLEAR" / "NOT CLEAR", "BONUS n OF m" (its Secret Bonus Points) and, when the
+     Archipelago client says pickupsanity is on, "PICKUPS nn OF mm"; then the code
+     digits and "nn OF 39 SBPS" (bits set in the bonus mask; SBP_TOTAL = 39).
   6. Basketball progress persists: the title screen no longer wipes the
      secret-door digits ($FFE9C4-CA) and basketball stages ($FFE9B0), and a
      copy is kept in the reset-proof area and restored when a stage is started
@@ -102,8 +104,29 @@ SS_REDRAW = 0x01359C          # draws the stage number for the cursor (ends with
 TEXT_DRAW = 0x01232C          # queue a text block (a0) for drawing; returns a2 = end of queued line
 TEXT_ERASE = 0x01231C         # queue the same block as blanks
 SBP_TOTAL = 39                # total shown on the stage select ("12 OF 39 SBPS")
-SBP_ROW = 0x509E              # screen address: 2 rows under the stage number
-CODE_ROW = 0x51A2             # 2 rows under that
+INFO_ROW = 0x509E             # screen address: 2 rows under the stage number
+SBP_ROW = INFO_ROW + 6 * 0x80                 # total bonus points, 6 rows down
+CODE_ROW = INFO_ROW + 4 * 0x80 + 4            # code digits, 4 rows down (2 cells right)
+# Stage info for the entry under the cursor, every other row like the game's own lines:
+#   row 0: "NOT CLEAR" / "CLEAR" and "BONUS n OF m"; row 2: "PICKUPS nn OF mm" (only when the
+#   Archipelago client has set PU_FLAG, i.e. pickupsanity; the client keeps PICKUP_MASK)
+INFO_BASE = 0x1A1800          # free space (after the JP layouts, before the flying-head fix)
+PICKUP_MASK = 0xFF90          # 12 bytes: bit i (byte i/8, bit i%8) = pickup check i done
+PU_FLAG = 0xFF9C              # byte: 1 = show the pickups line
+# ($FF80-$FFB7 is untouched by the game, and soft resets only clear RAM up to $FFFEFF)
+STAGE_NUMBERS = ['1-1', '2-1', '2-2', '2-3', '3-1', '3-2', '3-3', '3-4', '4-1', '4-2', '4-3',
+                 '4-4', '5-1', '5-2', '5-3', '5-4', '6-1', '6-2', '6-3', '6-4', '7', '8-1',
+                 '8-2', '8-3', '8-4', '8-5', '9-1', '9-2', '9-3']   # entries 1-29
+# Bonus point bits recorded for each act (the client's BONUS_POINTS, by act)
+ACT_BONUS_BITS = {'1-1': [0], '2-1': [7, 40, 41], '2-2': [1, 13, 10, 42], '2-3': [2], '3-1': [11],
+                  '3-2': [12], '3-3': [39], '3-4': [14], '4-1': [15, 3, 16], '4-2': [17],
+                  '4-3': [18, 43], '4-4': [19], '5-2': [21], '5-3': [22], '5-4': [23],
+                  '6-1': [35, 36], '6-4': [37], '7': [25, 4, 26], '8-1': [27], '8-2': [28],
+                  '8-3': [29, 6], '8-4': [30], '8-5': [5], '9-1': [31, 38], '9-2': [33], '9-3': [34]}
+# Pickup checks of each act: (first index, count) in the client's PICKUP_SPOTS order
+ACT_PICKUPS = {'2-2': (0, 18), '3-1': (18, 5), '4-1': (23, 17), '4-2': (40, 7), '4-3': (47, 5),
+               '5-3': (52, 1), '6-2': (53, 1), '6-3': (54, 1), '8-1': (55, 7), '8-3': (62, 16),
+               '9-1': (78, 7), '9-2': (85, 1)}
 
 # Bonus points that share an ID with another one get their own bit.
 # (stage ID, bonus ID, object slot or -1 for any, bit to record)
@@ -166,6 +189,129 @@ class Asm:
             assert -0x8000 <= disp < 0x8000
             self.code[off:off + 2] = struct.pack('>h', disp)
         return bytes(self.code)
+
+
+def text_block(addr, txt):
+    b = struct.pack('>HH', addr, 0x4600) + text_bytes(txt) + b'\xFF'
+    return b + (b'\xFF' if len(b) % 2 else b'')
+
+
+def line_addr(row, n):
+    """Screen address of an n-character line centred like the 13-character SBP line."""
+    return INFO_ROW + row * 0x80 + 2 * ((13 - n) // 2)
+
+
+def build_info():
+    """Stage info lines for the entry under the cursor (code and tables at INFO_BASE)."""
+    BEQ, BNE, BRA = 0x6700, 0x6600, 0x6000
+    i = Asm(INFO_BASE)
+    # info_clear: "NOT CLEAR" / "  CLEAR  " from the cleared mask
+    i.label('info_clear')
+    i.w(0x3038, E8C4)                           # move.w cursor,d0
+    i.w(0xE248)                                 # lsr.w #1,d0      entry
+    i.w(0x2238, CLEARED)                        # move.l CLEARED,d1
+    i.w(0x0101)                                 # btst d0,d1
+    i.br(BEQ, 'ic_not')
+    i.w(0x41F9); i.l(0); i.label('ref_clear')   # lea txt_clear,a0
+    i.br(BRA, 'ic_draw')
+    i.label('ic_not')
+    i.w(0x41F9); i.l(0); i.label('ref_notclear')
+    i.label('ic_draw')
+    i.w(0x4EF9); i.l(TEXT_DRAW)                 # jmp draw text
+    # info_bonus: "BONUS n OF m" from the act's list of bonus bits
+    i.label('info_bonus')
+    i.w(0x3038, E8C4)                           # move.w cursor,d0 (entry*2)
+    i.w(0x43F9); i.l(0); i.label('ref_bidx')    # lea bonus_index,a1
+    i.w(0x3231, 0x0000)                         # move.w 0(a1,d0.w),d1
+    i.w(0x43F9); i.l(0); i.label('ref_blist')   # lea bonus_lists,a1
+    i.w(0xD2C1)                                 # adda.w d1,a1
+    i.w(0x7400, 0x1419)                         # moveq #0,d2 / move.b (a1)+,d2   total
+    i.br(BEQ, 'ib_blank')
+    i.w(0x7600, 0x3802, 0x5344)                 # moveq #0,d3 / move.w d2,d4 / subq.w #1,d4
+    i.w(0x41F8, BONUS)                          # lea BONUS,a0
+    i.label('ib_loop')
+    i.w(0x7200, 0x1219)                         # moveq #0,d1 / move.b (a1)+,d1
+    i.w(0x3A01, 0xE64D)                         # move.w d1,d5 / lsr.w #3,d5
+    i.w(0x0330, 0x5000)                         # btst d1,0(a0,d5.w)
+    i.w(0x6702, 0x5243)                         # beq.s +2 / addq.w #1,d3
+    i.br(0x51CC, 'ib_loop')                     # dbra d4,ib_loop
+    i.w(0x48E7, 0x3000)                         # movem.l d2-d3,-(sp)
+    i.w(0x41F9); i.l(0); i.label('ref_bonus')   # lea txt_bonus,a0
+    i.w(0x4EB9); i.l(TEXT_DRAW)
+    i.w(0x4CDF, 0x000C)                         # movem.l (sp)+,d2-d3
+    i.w(0x0643, 0x46C1, 0x3543, (-12) & 0xFFFF) # taken: addi.w #$46C1,d3 / move.w d3,-12(a2)
+    i.w(0x0642, 0x46C1, 0x3542, (-2) & 0xFFFF)  # total: addi.w #$46C1,d2 / move.w d2,-2(a2)
+    i.w(0x4E75)
+    i.label('ib_blank')
+    i.w(0x41F9); i.l(0); i.label('ref_bblank')
+    i.w(0x4EF9); i.l(TEXT_DRAW)
+    # info_pickups: "PICKUPS nn OF mm" from PICKUP_MASK (only with PU_FLAG)
+    i.label('info_pickups')
+    i.w(0x4A38, PU_FLAG)                        # tst.b PU_FLAG
+    i.br(BEQ, 'ip_blank')
+    i.w(0x3038, E8C4)                           # move.w cursor,d0
+    i.w(0x43F9); i.l(0); i.label('ref_pidx')    # lea pickup_index,a1
+    i.w(0x3231, 0x0000)                         # move.w 0(a1,d0.w),d1   start<<8 | count
+    i.w(0x7400, 0x1401)                         # moveq #0,d2 / move.b d1,d2   total
+    i.br(BEQ, 'ip_blank')
+    i.w(0xE049)                                 # lsr.w #8,d1   first index
+    i.w(0x7600, 0x3802, 0x5344)                 # moveq #0,d3 / move.w d2,d4 / subq.w #1,d4
+    i.w(0x41F8, PICKUP_MASK)                    # lea PICKUP_MASK,a0
+    i.label('ip_loop')
+    i.w(0x3A01, 0xE64D)                         # move.w d1,d5 / lsr.w #3,d5
+    i.w(0x0330, 0x5000)                         # btst d1,0(a0,d5.w)
+    i.w(0x6702, 0x5243)                         # beq.s +2 / addq.w #1,d3
+    i.w(0x5241)                                 # addq.w #1,d1
+    i.br(0x51CC, 'ip_loop')                     # dbra d4,ip_loop
+    i.w(0x48E7, 0x3000)                         # movem.l d2-d3,-(sp)
+    i.w(0x41F9); i.l(0); i.label('ref_pick')
+    i.w(0x4EB9); i.l(TEXT_DRAW)
+    i.w(0x4CDF, 0x000C)                         # movem.l (sp)+,d2-d3
+    for reg, at in ((3, -16), (2, -4)):         # taken (cells 8-9), total (cells 14-15)
+        i.w(0x80FC | (reg << 9), 0x000A)        # divu #10,dN
+        i.w(0x0640 | reg, 0x46C1)               # addi.w #$46C1,dN   tens
+        i.w(0x3540 | reg, at & 0xFFFF)          # move.w dN,at(a2)
+        i.w(0x4840 | reg)                       # swap dN            ones
+        i.w(0x0640 | reg, 0x46C1)
+        i.w(0x3540 | reg, (at + 2) & 0xFFFF)
+    i.w(0x4E75)
+    i.label('ip_blank')
+    i.w(0x41F9); i.l(0); i.label('ref_pblank')
+    i.w(0x4EF9); i.l(TEXT_DRAW)
+    # tables: per entry (word each, entries 0-29)
+    i.label('bonus_index')
+    lists = bytearray()
+    for e in range(30):
+        bits = ACT_BONUS_BITS.get(STAGE_NUMBERS[e - 1], []) if e else []
+        i.w(len(lists))
+        lists += bytes([len(bits)] + bits)
+    i.label('pickup_index')
+    for e in range(30):
+        start, n = ACT_PICKUPS.get(STAGE_NUMBERS[e - 1], (0, 0)) if e else (0, 0)
+        i.w(start << 8 | n)
+    i.label('bonus_lists')
+    i.code += lists + (b'\xFF' if len(lists) % 2 else b'')
+    # row 0 holds "NOT CLEAR  BONUS 0 OF 0" (23 characters) as two blocks
+    left = INFO_ROW + 2 * ((13 - 23) // 2)
+    texts = {'txt_clear': (left, '  CLEAR  '), 'txt_notclear': (left, 'NOT CLEAR'),
+             'txt_bonus': (left + 22, 'BONUS 0 OF 0'), 'txt_bblank': (left + 22, ' ' * 12),
+             'txt_pickups': (line_addr(2, 16), 'PICKUPS 00 OF 00'),
+             'txt_pblank': (line_addr(2, 16), ' ' * 16)}
+    for name, (addr, txt) in texts.items():
+        i.label(name)
+        i.code += text_block(addr, txt)
+    code = bytearray(i.done())
+    for ref, target in (('ref_clear', 'txt_clear'), ('ref_notclear', 'txt_notclear'),
+                        ('ref_bidx', 'bonus_index'), ('ref_blist', 'bonus_lists'),
+                        ('ref_bonus', 'txt_bonus'), ('ref_bblank', 'txt_bblank'),
+                        ('ref_pidx', 'pickup_index'), ('ref_pick', 'txt_pickups'),
+                        ('ref_pblank', 'txt_pblank')):
+        o = i.labels[ref] - INFO_BASE - 4
+        code[o:o + 4] = struct.pack('>I', i.labels[target])
+    return bytes(code), i.labels
+
+
+INFO_CODE, INFO = build_info()
 
 
 def build(ap=False):
@@ -231,6 +377,7 @@ def build(ap=False):
     a.br(DBRA_D2, 'mv_back')
     a.label('mv_done')
     a.w(0x31C0, E8C4)                           # move.w d0,cursor
+    a.w(0x11FC, 0x0006, REDRAW)                 # move.b #6,REDRAW (this stage's info lines)
     a.w(0x103C, 0x00AD)                         # move.b #$AD,d0   (original code)
     a.w(0x4EF9); a.l(SOUND)                     # jmp sound        (its rts returns to the menu)
 
@@ -352,6 +499,12 @@ def build(ap=False):
     a.br(BEQ, 'fr_code')
     a.w(0x0C38, 0x0001, REDRAW)                 # cmpi.b #1,REDRAW
     a.br(BEQ, 'fr_sbp')
+    for n, routine in ((3, 'info_pickups'), (4, 'info_bonus'), (5, 'info_clear')):
+        a.w(0x0C38, n, REDRAW)                  # cmpi.b #n,REDRAW
+        a.br(BNE, 'fr_not%d' % n)
+        a.w(0x4EB9); a.l(INFO[routine])         # jsr stage info line
+        a.br(BRA, 'fr_x')
+        a.label('fr_not%d' % n)
     a.w(0x0C38, 0x0002, REDRAW)                 # cmpi.b #2,REDRAW
     a.br(BNE, 'fr_x')
     a.w(0x4EB9); a.l(SS_REDRAW)                 # jsr redraw stage number
@@ -401,6 +554,9 @@ def build(ap=False):
     a.w(0x41F9); a.l(0)                         # lea code_text,a0 (patched below)
     a.label('code_text_ref2')
     a.w(0x4EB9); a.l(TEXT_ERASE)                # jsr erase text
+    for t in ('txt_notclear', 'txt_bonus', 'txt_pickups'):
+        a.w(0x41F9); a.l(INFO[t])               # lea info line,a0
+        a.w(0x4EB9); a.l(TEXT_ERASE)
     a.w(0x41F9); a.l(0x013BC2)                  # lea $013BC2,a0 (original lea)
     a.w(0x4E75)                                 # rts
 
@@ -693,7 +849,10 @@ def apply(rom, unlock_mask=0x3FFFFFFE, ap=False):
         code[o:o + 4] = struct.pack('>I', a.labels[target])
     if any(b != 0xFF for b in rom[CODE_BASE:CODE_BASE + len(code)]):
         raise ValueError('free space at $%06X is not empty - already patched?' % CODE_BASE)
+    if any(b != 0xFF for b in rom[INFO_BASE:INFO_BASE + len(INFO_CODE)]):
+        raise ValueError('free space at $%06X is not empty - already patched?' % INFO_BASE)
     rom[CODE_BASE:CODE_BASE + len(code)] = code
+    rom[INFO_BASE:INFO_BASE + len(INFO_CODE)] = INFO_CODE
     for addr, orig, new in hooks(a.labels, ap):
         o = bytes.fromhex(orig.replace(' ', ''))
         if rom[addr:addr + len(o)] != o:

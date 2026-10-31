@@ -23,7 +23,7 @@ from worlds._bizhawk import read, write
 from worlds._bizhawk.client import BizHawkClient
 
 from .data import (BONUS_POINTS, DYING, GAME, RAM_BB_STAGES, RAM_BONUS, RAM_CLEARED, RAM_CONTINUES, RAM_DEATH_REQ, RAM_TRAP,
-                   RAM_DIGITS_BACKUP, RAM_HEADDY_STATE, PICKUP_SPOTS, RAM_COLLECTED, RAM_STAGE_ID,
+                   RAM_DIGITS_BACKUP, RAM_HEADDY_STATE, PICKUP_SPOTS, RAM_COLLECTED, RAM_STAGE_ID, RAM_PICKUP_MASK, RAM_PU_FLAG,
                    RAM_GAME_DIGITS, RAM_HEALTH, RAM_HUB_BLOCK, RAM_HUBFLAG, RAM_ITEMS, RAM_LIVES, RAM_MAGIC, RAM_MODE,
                    RAM_UNLOCK, ROM_MARKER, ROM_MARKER_ADDR, ROM_NAME_ADDR, SECRET_BOSS_BIT, STAGES)
 
@@ -285,10 +285,23 @@ class HeaddyClient(BizHawkClient):
                 if new != old:
                     writes.append(self.ram_write(addr, new.to_bytes(2, "big")))
             writes.append(self.ram_write(RAM_ITEMS, done.to_bytes(2, "big")))
-        if restored or new_backup != backup:
-            # The stage select drew its "nn OF 39 SBPS" / code lines before we got here:
-            # ask the hub to redraw them (REDRAW = 3: stage number, SBP line, code line).
-            writes.append(self.ram_write(RAM_HUBFLAG, bytes([u8(RAM_HUBFLAG), 3])))
+        # Pickup checks done, for the hub's stage info ("PICKUPS nn OF mm").
+        redraw = restored or new_backup != backup
+        if ctx.slot_data.get("pickupsanity"):
+            done_locs = set(ctx.checked_locations) | self.sent
+            mask = bytearray(12)
+            for i, (act, _, n, _) in enumerate(PICKUP_SPOTS):
+                if ids[pickup_name(act, n)] in done_locs:
+                    mask[i >> 3] |= 1 << (i & 7)
+            want = bytes(mask) + bytes([1, 0])
+            have, = await self.read_ram(ctx, [(RAM_PICKUP_MASK, 14)])
+            if have[:13] != want[:13]:
+                writes.append(self.ram_write(RAM_PICKUP_MASK, want[:12] + bytes([1, have[13]])))
+                redraw = True
+        if redraw:
+            # The stage select drew its lines before we got here: ask the hub to redraw
+            # them (REDRAW = 6: this stage's info lines, stage number, SBP line, code line).
+            writes.append(self.ram_write(RAM_HUBFLAG, bytes([u8(RAM_HUBFLAG), 6])))
         # ---------------------------------------------------------- DeathLink
         dying = mode == MODE_PLAYING and int.from_bytes(state, "big") == DYING
         if "DeathLink" in ctx.tags:

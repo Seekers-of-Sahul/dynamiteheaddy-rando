@@ -3,7 +3,9 @@
 ## What does randomization do to this game?
 
 The stage select becomes a hub. You start with one stage unlocked; every other stage is unlocked by an
-item from the multiworld. When you clear an act you go back to the hub. Headcase contents, colours,
+item from the multiworld. When you clear an act you go back to the hub. For the stage under the cursor,
+the hub shows whether it's cleared, how many of its Secret Bonus Points you have and, with pickupsanity,
+how many of its pickups you've collected. Headcase contents, colours,
 enemy damage and the Japanese balance can also be changed with options.
 
 ## What is the goal?

@@ -176,6 +176,8 @@ PICKUP_SPOTS = [
     ("9-1", 0x2C, 7, 0x22),   # X=1991, 500 points
     ("9-2", 0x2E, 1, 0x13),   # X=736, jelly bean
 ]
+RAM_PICKUP_MASK = 0xFF90    # 12 bytes for the hub's stage info: bit i = pickup check i done
+RAM_PU_FLAG = 0xFF9C        # byte: 1 = the hub shows the pickups line (pickupsanity)
 RAM_COLLECTED = 0xA800      # 256 bytes: $FF = the object with that saved ID was collected
 RAM_STAGE_ID = 0xE8AA       # word: current stage ID
 

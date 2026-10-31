@@ -190,7 +190,7 @@ python headdy_rando.py headdy.md jp.md --headcases off --jp-balance --jp-palette
 `ap_hub_patch.py` turns the stage select into a hub, the groundwork for Archipelago:
 
 - Each act returns to the stage select when you finish it.
-- Secret Bonus Points are counted on the hub screen.
+- The hub screen shows, for the stage under the cursor, whether it's cleared and how many of its Secret Bonus Points you have, plus the code digits and your total of Secret Bonus Points.
 - The basketball code digits are remembered.
 
 Always run the randomizer **first**, then the hub patch on its output:
